@@ -573,10 +573,6 @@ static void MysqlScan(ClientContext &context, TableFunctionInput &data, DataChun
 				// std::cout << "Result set done, final output_offset " << output_offset << std::endl;
 
 				output.SetCardinality(output_offset);
-				if (output_offset == STANDARD_VECTOR_SIZE)
-				{
-					return;
-				}
 			}
 
 			// std::cout << "output vector: " << output.size() << std::endl;
