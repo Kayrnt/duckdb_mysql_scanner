@@ -522,7 +522,7 @@ static void MysqlScan(ClientContext &context, TableFunctionInput &data, DataChun
 		if (local_state.done && !MysqlParallelStateNext(context, data.bind_data.get(), local_state, gstate))
 		{
 			// std::cout << "OUTPUT (size):" << output.size() << std::endl;
-			output.Print();
+			// output.Print();
 			// std::cout << "Annnnnd we're done" << std::endl;
 			return;
 		}
