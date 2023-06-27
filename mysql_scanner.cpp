@@ -345,6 +345,10 @@ static void ProcessValue(
 	//  }
 	//  mysql column index starts from 1
 	auto col_idx = query_col_idx + 1;
+	if(res->isNull(col_idx)){
+		FlatVector::Validity(out_vec).Set(output_offset, false);
+		return;
+	}
 	switch (type.id())
 	{
 	case LogicalTypeId::TINYINT:
