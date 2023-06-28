@@ -1,6 +1,7 @@
 #define DUCKDB_BUILD_LOADABLE_EXTENSION
 #include "duckdb.hpp"
-#include "mysql/include/mysql/jdbc.h"
+#include <mysqlx/xdevapi.h>
+#include <iostream>
 
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/planner/table_filter.hpp"
@@ -29,18 +30,16 @@ struct MysqlColumnInfo
 
 struct MysqlBindData : public FunctionData
 {
-	~MysqlBindData()
-	{
-		if (conn)
-		{
-			conn->close();
-			conn = nullptr;
-		}
-	}
+	// ~MysqlBindData()
+	// {
+	// 	if (client)
+	// 	{
+	// 		client->close();
+	// 		client = nullptr;
+	// 	}
+	// }
 
-	string host;
-	string username;
-	string password;
+	string connectionString;
 
 	string schema_name;
 	string table_name;
@@ -56,7 +55,8 @@ struct MysqlBindData : public FunctionData
 	string snapshot;
 	bool in_recovery;
 
-	sql::Connection *conn = nullptr;
+	mysqlx::Client *client;
+	// sql::Connection *conn = nullptr;
 
 public:
 	unique_ptr<FunctionData> Copy() const override
@@ -79,14 +79,14 @@ static idx_t MysqlMaxThreads(ClientContext &context, const FunctionData *bind_da
 
 struct MysqlLocalState : public LocalTableFunctionState
 {
-	~MysqlLocalState()
-	{
-		if (conn)
-		{
-			conn->close();
-			conn = nullptr;
-		}
-	}
+	// ~MysqlLocalState()
+	// {
+	// 	if (conn)
+	// 	{
+	// 		conn->close();
+	// 		conn = nullptr;
+	// 	}
+	// }
 
 	bool done = false;
 	bool exec = false;
@@ -99,7 +99,8 @@ struct MysqlLocalState : public LocalTableFunctionState
 
 	vector<column_t> column_ids;
 	TableFilterSet *filters;
-	sql::Connection *conn = nullptr;
+
+	mysqlx::Session *session = nullptr;
 };
 
 struct MysqlGlobalState : public GlobalTableFunctionState
@@ -253,10 +254,10 @@ static void MysqlInitPerTaskInternal(ClientContext &context, const MysqlBindData
 	lstate.end_page = page_start_at + page_to_fetch;
 	lstate.pagesize = STANDARD_VECTOR_SIZE;
 
-	// std::cout << "lstate.start_page: " << lstate.start_page << std::endl;
-	// std::cout << "lstate.end_page: " << lstate.end_page << std::endl;
+	std::cout << "lstate.start_page: " << lstate.start_page << std::endl;
+	std::cout << "lstate.end_page: " << lstate.end_page << std::endl;
 
-	// std::cout << "BASE SQL: " << lstate.base_sql << std::endl;
+	std::cout << "BASE SQL: " << lstate.base_sql << std::endl;
 
 	lstate.exec = false;
 	lstate.done = false;
@@ -268,10 +269,10 @@ static bool MysqlParallelStateNext(ClientContext &context, const FunctionData *b
 	D_ASSERT(bind_data_p);
 	auto bind_data = (const MysqlBindData *)bind_data_p;
 
-	// std::cout << "MysqlParallelStateNext: parallel_lock" << std::endl;
+	std::cout << "MysqlParallelStateNext: parallel_lock" << std::endl;
 	lock_guard<mutex> parallel_lock(gstate.lock);
 
-	// std::cout << "MysqlParallelStateNext: gstate.page_to_fetch: " << bind_data->approx_number_of_pages << std::endl;
+	std::cout << "MysqlParallelStateNext: gstate.page_to_fetch: " << bind_data->approx_number_of_pages << std::endl;
 	if (gstate.start_page < bind_data->approx_number_of_pages)
 	{
 		MysqlInitPerTaskInternal(context, bind_data, lstate, gstate.start_page, bind_data->approx_number_of_pages);
@@ -296,21 +297,14 @@ static string MysqlScanToString(const FunctionData *bind_data_p)
 #define MYSQL_EPOCH_JDATE 2451545 /* == date2j(2000, 1, 1) */
 
 static void ProcessValue(
-		sql::ResultSet *res,
+		mysqlx::Value row,
 		const LogicalType &type,
 		const MysqlTypeInfo *type_info,
 		Vector &out_vec,
 		idx_t query_col_idx,
 		idx_t output_offset)
 {
-	// std::cout << "Process value: query_col_idx : " << query_col_idx << std::endl;
-	// std::cout << "Process value: output_offset : " << output_offset << std::endl;
-	//  if(raw_col_idx == 2 || output_offset == 2){
-	//  throw InternalException("col_idx = %d, output_offset = %d", raw_col_idx, output_offset);
-	//  }
-	//  mysql column index starts from 1
-	auto col_idx = query_col_idx + 1;
-	if (res->isNull(col_idx))
+	if (row.isNull())
 	{
 		FlatVector::Validity(out_vec).Set(output_offset, false);
 		return;
@@ -319,41 +313,41 @@ static void ProcessValue(
 	{
 	case LogicalTypeId::TINYINT:
 	{
-		auto tinyIntValue = res->getInt(col_idx);
-		FlatVector::GetData<int8_t>(out_vec)[output_offset] = static_cast<int8_t>(tinyIntValue);
+		auto val = row.get<int32_t>();
+		FlatVector::GetData<int8_t>(out_vec)[output_offset] = static_cast<int8_t>(val);
 		break;
 	}
 	case LogicalTypeId::SMALLINT:
 	{
-		auto smallIntValue = res->getInt(col_idx);
-		FlatVector::GetData<int16_t>(out_vec)[output_offset] = static_cast<int16_t>(smallIntValue);
+		auto val = row.get<int32_t>();
+		FlatVector::GetData<int16_t>(out_vec)[output_offset] = static_cast<int8_t>(val);
 		break;
 	}
 	case LogicalTypeId::INTEGER:
 	{
-		FlatVector::GetData<int32_t>(out_vec)[output_offset] = res->getInt(col_idx);
+		FlatVector::GetData<int32_t>(out_vec)[output_offset] = row.get<int32_t>();
 		break;
 	}
 	case LogicalTypeId::UINTEGER:
 	{
-		FlatVector::GetData<uint32_t>(out_vec)[output_offset] = res->getUInt(col_idx);
+		FlatVector::GetData<uint32_t>(out_vec)[output_offset] = row.get<uint32_t>();
 		break;
 	}
 	case LogicalTypeId::BIGINT:
 	{
-		FlatVector::GetData<int64_t>(out_vec)[output_offset] = res->getInt64(col_idx);
+		FlatVector::GetData<int64_t>(out_vec)[output_offset] = row.get<int64_t>();
 		break;
 	}
 	case LogicalTypeId::FLOAT:
 	{
-		auto i = res->getDouble(col_idx);
+		auto i = row.get<float>();
 		FlatVector::GetData<float>(out_vec)[output_offset] = *((float *)&i);
 		break;
 	}
 
 	case LogicalTypeId::DOUBLE:
 	{
-		auto i = res->getDouble(col_idx);
+		auto i = row.get<double>();
 		FlatVector::GetData<double>(out_vec)[output_offset] = *((double *)&i);
 		break;
 	}
@@ -365,7 +359,7 @@ static void ProcessValue(
 		{
 			InternalException("> AVANT VARCHAR query_col_idx == 0 !!!");
 		}
-		auto mysql_str = res->getString(col_idx);
+		auto mysql_str = row.get<string>();
 		auto c_str = mysql_str.c_str();
 		auto value_len = mysql_str.length();
 		auto duckdb_str = StringVector::AddStringOrBlob(out_vec, c_str, value_len);
@@ -377,27 +371,27 @@ static void ProcessValue(
 		break;
 	}
 	case LogicalTypeId::BOOLEAN:
-		FlatVector::GetData<bool>(out_vec)[output_offset] = res->getBoolean(col_idx);
+		FlatVector::GetData<bool>(out_vec)[output_offset] = row.get<bool>();
 		break;
 	case LogicalTypeId::DECIMAL:
 	{
-		auto decimal_config = res->getDouble(col_idx);
+		auto decimal_config = row.get<double>();
 		switch (type.InternalType())
 		{
 		case PhysicalType::INT16:
 		{
-			auto smallIntValue = res->getInt(col_idx);
+			auto smallIntValue = row.get<int32_t>();
 			FlatVector::GetData<int16_t>(out_vec)[output_offset] = static_cast<int16_t>(smallIntValue);
 			break;
 		}
 		case PhysicalType::INT32:
 		{
-			FlatVector::GetData<int32_t>(out_vec)[output_offset] = res->getInt(col_idx);
+			FlatVector::GetData<int32_t>(out_vec)[output_offset] = row.get<int32_t>();
 			break;
 		}
 		case PhysicalType::INT64:
 		{
-			FlatVector::GetData<int64_t>(out_vec)[output_offset] = res->getInt64(col_idx);
+			FlatVector::GetData<int64_t>(out_vec)[output_offset] = row.get<int64_t>();
 			break;
 		}
 		// case PhysicalType::INT128:
@@ -411,7 +405,7 @@ static void ProcessValue(
 	// case LogicalTypeId::DATE:
 	// {
 
-	// 	auto jd = res->getUInt64(col_idx);
+	// 	auto jd = row.getUInt64();
 	// 	auto out_ptr = FlatVector::GetData<date_t>(out_vec);
 	// 	out_ptr[output_offset].days = jd + MYSQL_EPOCH_JDATE - 2440588; // magic! TODO check as copied from Postgres
 	// 	break;
@@ -453,8 +447,9 @@ static void ProcessValue(
 	// }
 	case LogicalTypeId::ENUM:
 	{
-		auto mysql_str = res->getString(col_idx);
+		auto mysql_str = row.get<string>();
 		auto enum_val = mysql_str.c_str();
+		std::cout << "ENUM value: " << enum_val << std::endl;
 		auto offset = EnumType::GetPos(type, enum_val);
 		if (offset < 0)
 		{
@@ -525,17 +520,18 @@ static void MysqlScan(ClientContext &context, TableFunctionInput &data, DataChun
 
 	while (true)
 	{
-		// std::cout << "while true..." << std::endl;
+		std::cout << "while true..." << std::endl;
 		if (local_state.done && !MysqlParallelStateNext(context, data.bind_data.get(), local_state, gstate))
 		{
-			// std::cout << "OUTPUT (size):" << output.size() << std::endl;
-			// output.Print();
-			// std::cout << "Annnnnd we're done" << std::endl;
+			std::cout << "OUTPUT (size):" << output.size() << std::endl;
+			//  output.Print();
+			std::cout << "Annnnnd we're done" << std::endl;
 			return;
 		}
 
 		idx_t output_offset = 0;
-		auto stmt = local_state.conn->createStatement();
+		auto session = local_state.session;
+		// auto stmt = session->sqkcreateStatement();
 
 		auto sql = StringUtil::Format(
 				R"(
@@ -543,32 +539,34 @@ static void MysqlScan(ClientContext &context, TableFunctionInput &data, DataChun
 						)",
 				local_state.base_sql, local_state.pagesize, local_state.pagesize * local_state.current_page);
 
-		// std::cout << "running sql: " << sql << std::endl;
-		auto res = stmt->executeQuery(sql);
-		if (res->rowsCount() == 0)
+		std::cout << "running sql: " << sql << std::endl;
+		auto res = session->sql(sql).execute();
+		if (res.count() == 0)
 		{ // done here, lets try to get more
-			// std::cout << "done reading, result set empty" << std::endl;
+			std::cout << "done reading, result set empty" << std::endl;
 			local_state.done = true;
 			continue;
 		}
 
-		// std::cout << "reading result set" << std::endl;
+		std::cout << "reading result set" << std::endl;
 
 		// iterate over the result set and write the result in the output data chunk
-		while (res->next())
+
+		mysqlx::Row row;
+		while ((row = res.fetchOne()))
 		{
-			// std::cout << "reading row: " << output_offset << std::endl;
-			// for each column from the bind data, read the value and write it to the result vector
+			std::cout << "reading row: " << output_offset << std::endl;
+			//  for each column from the bind data, read the value and write it to the result vector
 			for (idx_t query_col_idx = 0; query_col_idx < output.ColumnCount(); query_col_idx++)
 			{
-				// std::cout << "ITERATE result set/ query_col_idx: " << query_col_idx << " output_offset: " << output_offset << std::endl;
+				std::cout << "ITERATE result set/ query_col_idx: " << query_col_idx << " output_offset: " << output_offset << std::endl;
 				auto table_col_idx = local_state.column_ids[query_col_idx];
 				auto &out_vec = output.data[query_col_idx];
-				// std::cout << "bind_data.names[table_col_idx] " << bind_data.names[table_col_idx] << std::endl;
-				// std::cout << "bind_data.types[table_col_idx] " << bind_data.types[table_col_idx].ToString() << std::endl;
-				// std::cout << "bind_data.columns[table_col_idx].type_info " << bind_data.columns[table_col_idx].type_info.name << std::endl;
-				//  print the size of output data
-				ProcessValue(res,
+				std::cout << "bind_data.names[table_col_idx] " << bind_data.names[table_col_idx] << std::endl;
+				std::cout << "bind_data.types[table_col_idx] " << bind_data.types[table_col_idx].ToString() << std::endl;
+				std::cout << "bind_data.columns[table_col_idx].type_info " << bind_data.columns[table_col_idx].type_info.name << std::endl;
+				//   print the size of output data
+				ProcessValue(row[query_col_idx],
 										 bind_data.types[table_col_idx],
 										 &bind_data.columns[table_col_idx].type_info,
 										 out_vec,
@@ -578,22 +576,22 @@ static void MysqlScan(ClientContext &context, TableFunctionInput &data, DataChun
 
 			output_offset++;
 
-			// std::cout << "Result set done, final output_offset " << output_offset << std::endl;
+			std::cout << "Result set done, final output_offset " << output_offset << std::endl;
 
 			output.SetCardinality(output_offset);
 		}
 
-		// std::cout << "output vector: " << output.size() << std::endl;
-		// std::cout << "closing statement" << std::endl;
+		std::cout << "output vector: " << output.size() << std::endl;
+		std::cout << "closing statement" << std::endl;
 
-		res->close();
-		stmt->close();
-		// std::cout << "local_state.current_page: " << local_state.current_page << std::endl;
+		// res->close();
+		// stmt->close();
+		std::cout << "local_state.current_page: " << local_state.current_page << std::endl;
 		local_state.current_page += 1;
 
 		if (local_state.current_page == local_state.end_page)
 		{
-			// std::cout << "current = end => done" << std::endl;
+			std::cout << "current = end => done" << std::endl;
 			local_state.done = true;
 		}
 
@@ -704,32 +702,37 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 
 	auto bind_data = make_uniq<MysqlBindData>();
 
-	bind_data->host = input.inputs[0].GetValue<string>();
-	bind_data->username = input.inputs[1].GetValue<string>();
-	bind_data->password = input.inputs[2].GetValue<string>();
+	bind_data->connectionString = input.inputs[0].GetValue<string>();
 
-	bind_data->schema_name = input.inputs[3].GetValue<string>();
-	bind_data->table_name = input.inputs[4].GetValue<string>();
+	bind_data->schema_name = input.inputs[1].GetValue<string>();
+	bind_data->table_name = input.inputs[2].GetValue<string>();
 
-	auto driver = sql::mysql::get_mysql_driver_instance();
+	std::cout << "BIND: Connect to MySQL server at " << bind_data->connectionString << std::endl;
+	mysqlx::ClientSettings from_option_list(bind_data->connectionString,
+                   mysqlx::ClientOption::POOLING, true,
+                   mysqlx::ClientOption::POOL_MAX_SIZE, 10,
+                   mysqlx::ClientOption::POOL_QUEUE_TIMEOUT, std::chrono::seconds(100),
+                   mysqlx::ClientOption::POOL_MAX_IDLE_TIME, std::chrono::microseconds(1)
+      );
+	mysqlx::Client client(from_option_list);
+	bind_data->client = &client;
+	auto session = client.getSession();
 
-	// std::cout << "Connecting to MySQL server " << bind_data->host << std::endl;
-	//  Establish a MySQL connection
-	bind_data->conn = driver->connect(bind_data->host, bind_data->username, bind_data->password);
-	auto stmt1 = bind_data->conn->createStatement();
+	auto res1 = session.sql(
+												 StringUtil::Format(
+														 R"(SELECT CEIL(COUNT(*) / %d) FROM %s.%s)",
+														 STANDARD_VECTOR_SIZE, bind_data->schema_name, bind_data->table_name))
+									.execute();
 
-	auto res1 = stmt1->executeQuery(
-			StringUtil::Format(
-					R"(SELECT CEIL(COUNT(*) / %d) FROM %s.%s)",
-					STANDARD_VECTOR_SIZE, bind_data->schema_name, bind_data->table_name));
-	if (res1->rowsCount() != 1)
+	if (res1.count() != 1)
 	{
 		throw InvalidInputException("Mysql table \"%s\".\"%s\" not found", bind_data->schema_name,
 																bind_data->table_name);
 	}
-	if (res1->next())
+	auto row = res1.fetchOne();
+	if (row)
 	{
-		bind_data->approx_number_of_pages = res1->getInt64(1);
+		bind_data->approx_number_of_pages = row[0].get<int64_t>();
 	}
 	else
 	{
@@ -738,12 +741,8 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 		throw InvalidInputException("Failed to fetch data from result set");
 	}
 
-	res1->close();
-	stmt1->close();
-
-	auto stmt2 = bind_data->conn->createStatement();
-	auto res2 = stmt2->executeQuery(StringUtil::Format(
-			R"(
+	auto res2 = session.sql(StringUtil::Format(
+															R"(
 			SELECT column_name,
 						 DATA_TYPE,
        			 character_maximum_length,
@@ -754,24 +753,25 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 			WHERE  table_schema = '%s'
 			AND 	 table_name = '%s';
 			)",
-			bind_data->schema_name, bind_data->table_name));
+															bind_data->schema_name, bind_data->table_name))
+									.execute();
 
 	// can't scan a table without columns (yes those exist)
-	if (res2->rowsCount() == 0)
+	if (res2.count() == 0)
 	{
 		throw InvalidInputException("Table %s does not contain any columns.", bind_data->table_name);
 	}
 
 	// set the column types in a MysqlColumnInfo struct by iterating over the result set
-	while (res2->next())
+	while ((row = res2.fetchOne()))
 	{
 		MysqlColumnInfo info;
-		info.column_name = res2->getString(1);
-		info.type_info.name = res2->getString(2);
-		info.type_info.char_max_length = res2->getInt(3);
-		info.type_info.numeric_precision = res2->getInt(4);
-		info.type_info.numeric_scale = res2->getInt(5);
-		info.type_info.enum_values = res2->getString(6);
+		info.column_name = row[0].get<std::string>();
+		info.type_info.name = row[1].get<std::string>();
+		info.type_info.char_max_length = row[2].get<std::int32_t>();
+		info.type_info.numeric_precision = row[3].get<std::int32_t>();
+		info.type_info.numeric_scale = row[4].get<std::int32_t>();
+		info.type_info.enum_values = row[5].get<string>();
 
 		bind_data->names.push_back(info.column_name);
 
@@ -790,8 +790,6 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 
 		bind_data->columns.push_back(info);
 	}
-	res2->close();
-	stmt2->close();
 
 	return_types = bind_data->types;
 	names = bind_data->names;
@@ -806,16 +804,6 @@ static unique_ptr<GlobalTableFunctionState> MysqlInitGlobalState(ClientContext &
 			MysqlMaxThreads(context, input.bind_data.get()));
 }
 
-static sql::Connection *MysqlScanConnect(string host, string username, string password)
-{
-	sql::mysql::MySQL_Driver *driver;
-	sql::Connection *conn;
-	driver = sql::mysql::get_mysql_driver_instance();
-	// Establish a MySQL connection
-	conn = driver->connect(host, username, password);
-	return conn;
-}
-
 static unique_ptr<LocalTableFunctionState> MysqlInitLocalState(ExecutionContext &context,
 																															 TableFunctionInitInput &input,
 																															 GlobalTableFunctionState *global_state)
@@ -825,7 +813,6 @@ static unique_ptr<LocalTableFunctionState> MysqlInitLocalState(ExecutionContext 
 
 	auto local_state = make_uniq<MysqlLocalState>();
 	local_state->column_ids = input.column_ids;
-	local_state->conn = MysqlScanConnect(bind_data.host, bind_data.username, bind_data.password);
 	local_state->filters = input.filters.get();
 
 	if (!MysqlParallelStateNext(context.client, input.bind_data.get(), *local_state, gstate))
@@ -848,9 +835,9 @@ struct AttachFunctionData : public TableFunctionData
 	bool overwrite = false;
 	bool filter_pushdown = true;
 
-	string host;
-	string username;
-	string password;
+	string connectionString;
+
+	mysqlx::Client *client;
 };
 
 static unique_ptr<FunctionData> AttachBind(ClientContext &context, TableFunctionBindInput &input,
@@ -858,9 +845,7 @@ static unique_ptr<FunctionData> AttachBind(ClientContext &context, TableFunction
 {
 
 	auto result = make_uniq<AttachFunctionData>();
-	result->host = input.inputs[0].GetValue<string>();
-	result->username = input.inputs[1].GetValue<string>();
-	result->password = input.inputs[2].GetValue<string>();
+	result->connectionString = input.inputs[0].GetValue<string>();
 
 	for (auto &kv : input.named_parameters)
 	{
@@ -895,36 +880,39 @@ static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, D
 		return;
 	}
 
-	sql::mysql::MySQL_Driver *driver;
+	// sql::mysql::MySQL_Driver *driver;
 
-	driver = sql::mysql::get_mysql_driver_instance();
+	// driver = sql::mysql::get_mysql_driver_instance();
 
 	// Establish a MySQL connection
-	auto conn = driver->connect(data.host, data.username, data.password);
+	// auto conn = driver->connect(data.host, data.username, data.password);
 
 	auto dconn = Connection(context.db->GetDatabase(context));
-	auto stmt = conn->createStatement();
-	auto res = stmt->executeQuery(StringUtil::Format(
-			R"(
+	// auto stmt = conn->createStatement();
+	std::cout << "Connect to MySQL server at " << data.connectionString << std::endl;
+	mysqlx::Client client(data.connectionString, mysqlx::ClientOption::POOL_MAX_SIZE, 10);
+	data.client = &client;
+	auto session = client.getSession();
+	auto res = session.sql(StringUtil::Format(
+														 R"(
 			SELECT table_name
 			FROM   information_schema.tables 
 			WHERE  table_schema = '%s';
 			)",
-			data.source_schema));
+														 data.source_schema))
+								 .execute();
 
-	while (res->next())
+	mysqlx::Row row;
+	while ((row = res.fetchOne()))
 	{
-		auto mysql_str = res->getString(1);
+		auto mysql_str = row[0].get<std::string>();
 		auto table_name = mysql_str.c_str();
 
 		dconn
 				.TableFunction(data.filter_pushdown ? "mysql_scan_pushdown" : "mysql_scan",
-											 {Value(data.host), Value(data.username), Value(data.password), Value(data.source_schema), Value(table_name)})
+											 {Value(data.connectionString), Value(data.source_schema), Value(table_name)})
 				->CreateView(data.sink_schema, table_name, data.overwrite, false);
 	}
-	res->close();
-	stmt->close();
-	conn->close();
 
 	data.finished = true;
 }
@@ -933,7 +921,7 @@ class MysqlScanFunction : public TableFunction
 {
 public:
 	MysqlScanFunction()
-			: TableFunction("mysql_scan", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR},
+			: TableFunction("mysql_scan", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR},
 											MysqlScan, MysqlBind, MysqlInitGlobalState, MysqlInitLocalState)
 	{
 		to_string = MysqlScanToString;
@@ -945,7 +933,7 @@ class MysqlScanFunctionFilterPushdown : public TableFunction
 {
 public:
 	MysqlScanFunctionFilterPushdown()
-			: TableFunction("mysql_scan_pushdown", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR},
+			: TableFunction("mysql_scan_pushdown", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR},
 											MysqlScan, MysqlBind, MysqlInitGlobalState, MysqlInitLocalState)
 	{
 		to_string = MysqlScanToString;
@@ -971,7 +959,7 @@ extern "C"
 		CreateTableFunctionInfo mysql_filter_pushdown_info(mysql_fun_filter_pushdown);
 		catalog.CreateTableFunction(context, mysql_filter_pushdown_info);
 
-		TableFunction attach_func("mysql_attach", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, AttachFunction, AttachBind);
+		TableFunction attach_func("mysql_attach", {LogicalType::VARCHAR}, AttachFunction, AttachBind);
 		attach_func.named_parameters["overwrite"] = LogicalType::BOOLEAN;
 		attach_func.named_parameters["filter_pushdown"] = LogicalType::BOOLEAN;
 

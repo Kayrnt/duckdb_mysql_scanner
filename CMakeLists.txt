@@ -129,7 +129,7 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 set(PARAMETERS "-no-warnings")
 build_loadable_extension(${TARGET_NAME} ${PARAMETERS} mysql_scanner.cpp)
 
-target_link_libraries(${TARGET_NAME}_loadable_extension ${OPENSSL_LIBRARIES} -lmysqlcppconn)
+target_link_libraries(${TARGET_NAME}_loadable_extension ${OPENSSL_LIBRARIES} -lmysqlcppconn8)
 set_property(TARGET ${TARGET_NAME}_loadable_extension PROPERTY C_STANDARD 99)
 
 # if(WIN32)
