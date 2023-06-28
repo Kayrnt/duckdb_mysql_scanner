@@ -44,7 +44,7 @@ struct MysqlBindData : public FunctionData
 
 	string schema_name;
 	string table_name;
-	idx_t pages_approx = 0;
+	idx_t approx_number_of_pages = 0;
 
 	vector<MysqlColumnInfo> columns;
 	vector<string> names;
@@ -74,7 +74,7 @@ static idx_t MysqlMaxThreads(ClientContext &context, const FunctionData *bind_da
 	D_ASSERT(bind_data_p);
 
 	auto bind_data = (const MysqlBindData *)bind_data_p;
-	return bind_data->pages_approx / bind_data->pages_per_task;
+	return bind_data->approx_number_of_pages / bind_data->pages_per_task;
 }
 
 struct MysqlLocalState : public LocalTableFunctionState
@@ -90,7 +90,13 @@ struct MysqlLocalState : public LocalTableFunctionState
 
 	bool done = false;
 	bool exec = false;
-	string sql = "";
+	string base_sql = "";
+
+	idx_t start_page = 0;
+	idx_t current_page = 0;
+	idx_t end_page = 0;
+	idx_t pagesize = 0;
+
 	vector<column_t> column_ids;
 	TableFilterSet *filters;
 	sql::Connection *conn = nullptr;
@@ -98,12 +104,12 @@ struct MysqlLocalState : public LocalTableFunctionState
 
 struct MysqlGlobalState : public GlobalTableFunctionState
 {
-	MysqlGlobalState(idx_t max_threads) : page_idx(0), max_threads(max_threads)
+	MysqlGlobalState(idx_t max_threads) : start_page(0), max_threads(max_threads)
 	{
 	}
 
 	mutex lock;
-	idx_t page_idx;
+	idx_t start_page;
 	idx_t max_threads;
 
 	idx_t MaxThreads() const override
@@ -176,8 +182,8 @@ static string TransformFilter(string &column_name, TableFilter &filter)
 	}
 }
 
-static void MysqlInitInternal(ClientContext &context, const MysqlBindData *bind_data_p,
-															MysqlLocalState &lstate, idx_t page, idx_t pagesize)
+static void MysqlInitPerTaskInternal(ClientContext &context, const MysqlBindData *bind_data_p,
+																		 MysqlLocalState &lstate, idx_t page_start_at, idx_t page_to_fetch)
 {
 	D_ASSERT(bind_data_p);
 
@@ -236,14 +242,21 @@ static void MysqlInitInternal(ClientContext &context, const MysqlBindData *bind_
 		filter_string = " WHERE " + StringUtil::Join(filter_entries, " AND ");
 	}
 
-	lstate.sql = StringUtil::Format(
+	lstate.base_sql = StringUtil::Format(
 			R"(
-			SELECT %s FROM `%s`.`%s` %s LIMIT %d OFFSET %d;
+			SELECT %s FROM `%s`.`%s` %s
 			)",
 
-			col_names, bind_data->schema_name, bind_data->table_name, filter_string, pagesize, page * pagesize);
+			col_names, bind_data->schema_name, bind_data->table_name, filter_string);
 
-	// std::cout << "SQL: " << lstate.sql << std::endl;		
+	lstate.start_page = page_start_at;
+	lstate.end_page = page_start_at + page_to_fetch;
+	lstate.pagesize = STANDARD_VECTOR_SIZE;
+
+	// std::cout << "lstate.start_page: " << lstate.start_page << std::endl;
+	// std::cout << "lstate.end_page: " << lstate.end_page << std::endl;
+
+	// std::cout << "BASE SQL: " << lstate.base_sql << std::endl;
 
 	lstate.exec = false;
 	lstate.done = false;
@@ -257,24 +270,19 @@ static bool MysqlParallelStateNext(ClientContext &context, const FunctionData *b
 
 	// std::cout << "MysqlParallelStateNext: parallel_lock" << std::endl;
 	lock_guard<mutex> parallel_lock(gstate.lock);
-	auto pagesize = STANDARD_VECTOR_SIZE;
 
-	// std::cout << "MysqlParallelStateNext: gstate.page_idx: " << gstate.page_idx << std::endl;
-	if (gstate.page_idx < bind_data->pages_approx)
+	// std::cout << "MysqlParallelStateNext: gstate.page_to_fetch: " << bind_data->approx_number_of_pages << std::endl;
+	if (gstate.start_page < bind_data->approx_number_of_pages)
 	{
-		auto page_max = gstate.page_idx + bind_data->pages_per_task;
-		if (page_max >= bind_data->pages_approx)
-		{
-			// the relpages entry is not the real max, so make the last task bigger
-			page_max = 4294967295; // using the max value of uint32_t
-		}
-
-		MysqlInitInternal(context, bind_data, lstate, gstate.page_idx, pagesize);
-		gstate.page_idx += bind_data->pages_per_task;
+		MysqlInitPerTaskInternal(context, bind_data, lstate, gstate.start_page, bind_data->approx_number_of_pages);
+		gstate.start_page += bind_data->pages_per_task;
 		return true;
 	}
-	lstate.done = true;
-	return false;
+	else
+	{
+		lstate.done = true;
+		return false;
+	}
 }
 
 static string MysqlScanToString(const FunctionData *bind_data_p)
@@ -514,8 +522,6 @@ static void MysqlScan(ClientContext &context, TableFunctionInput &data, DataChun
 	auto &local_state = data.local_state->Cast<MysqlLocalState>();
 	auto &gstate = data.global_state->Cast<MysqlGlobalState>();
 
-	idx_t output_offset = 0;
-
 	while (true)
 	{
 		// std::cout << "while true..." << std::endl;
@@ -527,61 +533,70 @@ static void MysqlScan(ClientContext &context, TableFunctionInput &data, DataChun
 			return;
 		}
 
-		if (!local_state.exec)
+		idx_t output_offset = 0;
+		auto stmt = local_state.conn->createStatement();
+
+		auto sql = StringUtil::Format(
+				R"(
+							%s LIMIT %d OFFSET %d;
+						)",
+				local_state.base_sql, local_state.pagesize, local_state.pagesize * local_state.current_page);
+
+		// std::cout << "running sql: " << sql << std::endl;
+		auto res = stmt->executeQuery(sql);
+		if (res->rowsCount() == 0)
+		{ // done here, lets try to get more
+			// std::cout << "done reading, result set empty" << std::endl;
+			local_state.done = true;
+			continue;
+		}
+
+		// std::cout << "reading result set" << std::endl;
+
+		// iterate over the result set and write the result in the output data chunk
+		while (res->next())
 		{
-			local_state.exec = true;
-			if (local_state.sql == "")
+			// std::cout << "reading row: " << output_offset << std::endl;
+			// for each column from the bind data, read the value and write it to the result vector
+			for (idx_t query_col_idx = 0; query_col_idx < output.ColumnCount(); query_col_idx++)
 			{
-				throw InternalException("No sql statement to execute, local state not properly initialized");
-			}
-			auto stmt = local_state.conn->createStatement();
-			// std::cout << "running sql: " << local_state.sql << std::endl;
-			auto res = stmt->executeQuery(local_state.sql);
-			if (res->rowsCount() == 0)
-			{ // done here, lets try to get more
-				// std::cout << "done reading, result set empty" << std::endl;
-				local_state.done = true;
-				continue;
-			}
-
-			// std::cout << "reading result set" << std::endl;
-
-			// iterate over the result set and write the result in the output data chunk
-			while (res->next())
-			{
-				// std::cout << "reading row: " << output_offset << std::endl;
-				// for each column from the bind data, read the value and write it to the result vector
-				for (idx_t query_col_idx = 0; query_col_idx < output.ColumnCount(); query_col_idx++)
-				{
-					// std::cout << "ITERATE result set/ query_col_idx: " << query_col_idx << " output_offset: " << output_offset << std::endl;
-					auto table_col_idx = local_state.column_ids[query_col_idx];
-					auto &out_vec = output.data[query_col_idx];
-					// std::cout << "bind_data.names[table_col_idx] " << bind_data.names[table_col_idx] << std::endl;
-					// std::cout << "bind_data.types[table_col_idx] " << bind_data.types[table_col_idx].ToString() << std::endl;
-					// std::cout << "bind_data.columns[table_col_idx].type_info " << bind_data.columns[table_col_idx].type_info.name << std::endl;
-					//  print the size of output data
-					ProcessValue(res,
-											 bind_data.types[table_col_idx],
-											 &bind_data.columns[table_col_idx].type_info,
-											 out_vec,
-											 query_col_idx,
-											 output_offset);
-				}
-
-				output_offset++;
-
-				// std::cout << "Result set done, final output_offset " << output_offset << std::endl;
-
-				output.SetCardinality(output_offset);
+				// std::cout << "ITERATE result set/ query_col_idx: " << query_col_idx << " output_offset: " << output_offset << std::endl;
+				auto table_col_idx = local_state.column_ids[query_col_idx];
+				auto &out_vec = output.data[query_col_idx];
+				// std::cout << "bind_data.names[table_col_idx] " << bind_data.names[table_col_idx] << std::endl;
+				// std::cout << "bind_data.types[table_col_idx] " << bind_data.types[table_col_idx].ToString() << std::endl;
+				// std::cout << "bind_data.columns[table_col_idx].type_info " << bind_data.columns[table_col_idx].type_info.name << std::endl;
+				//  print the size of output data
+				ProcessValue(res,
+										 bind_data.types[table_col_idx],
+										 &bind_data.columns[table_col_idx].type_info,
+										 out_vec,
+										 query_col_idx,
+										 output_offset);
 			}
 
-			// std::cout << "output vector: " << output.size() << std::endl;
-			// std::cout << "closing statement" << std::endl;
+			output_offset++;
 
-			res->close();
-			stmt->close();
+			// std::cout << "Result set done, final output_offset " << output_offset << std::endl;
+
+			output.SetCardinality(output_offset);
+		}
+
+		// std::cout << "output vector: " << output.size() << std::endl;
+		// std::cout << "closing statement" << std::endl;
+
+		res->close();
+		stmt->close();
+		// std::cout << "local_state.current_page: " << local_state.current_page << std::endl;
+		local_state.current_page += 1;
+
+		if (local_state.current_page == local_state.end_page)
+		{
+			// std::cout << "current = end => done" << std::endl;
 			local_state.done = true;
 		}
+
+		return;
 	}
 }
 
@@ -697,8 +712,8 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 
 	auto driver = sql::mysql::get_mysql_driver_instance();
 
-	//std::cout << "Connecting to MySQL server " << bind_data->host << std::endl;
-	// Establish a MySQL connection
+	// std::cout << "Connecting to MySQL server " << bind_data->host << std::endl;
+	//  Establish a MySQL connection
 	bind_data->conn = driver->connect(bind_data->host, bind_data->username, bind_data->password);
 	auto stmt1 = bind_data->conn->createStatement();
 
@@ -713,7 +728,7 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 	}
 	if (res1->next())
 	{
-		bind_data->pages_approx = res1->getInt64(1);
+		bind_data->approx_number_of_pages = res1->getInt64(1);
 	}
 	else
 	{
@@ -786,7 +801,8 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 static unique_ptr<GlobalTableFunctionState> MysqlInitGlobalState(ClientContext &context,
 																																 TableFunctionInitInput &input)
 {
-	return make_uniq<MysqlGlobalState>(MysqlMaxThreads(context, input.bind_data.get()));
+	return make_uniq<MysqlGlobalState>(
+			MysqlMaxThreads(context, input.bind_data.get()));
 }
 
 static sql::Connection *MysqlScanConnect(string host, string username, string password)
