@@ -453,7 +453,8 @@ static void ProcessValue(
 	// }
 	case LogicalTypeId::ENUM:
 	{
-		auto enum_val = (res->getString(col_idx)).c_str();
+		auto mysql_str = res->getString(col_idx);
+		auto enum_val = mysql_str.c_str();
 		auto offset = EnumType::GetPos(type, enum_val);
 		if (offset < 0)
 		{
