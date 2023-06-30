@@ -1,18 +1,19 @@
 cmake_minimum_required(VERSION 2.8.12)
 set(TARGET_NAME mysql_scanner)
 project(${TARGET_NAME})
-#set(MYSQL_LIB_FULLPATH ${LIBPG_SOURCES})
+set(EXTENSION_NAME ${TARGET_NAME}_extension)
+
 set(FULL_PATH_TO_MYSQL_CONNECTOR_CPP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mysql)
 include_directories(${FULL_PATH_TO_MYSQL_CONNECTOR_CPP_DIR}/include)
 link_directories(${FULL_PATH_TO_MYSQL_CONNECTOR_CPP_DIR}/lib64)
-#add_executable(main main.cpp)
-#target_link_libraries(main curl mysqlcppconn)
-#target_compile_features(main PRIVATE cxx_range_for)
 
 add_definitions(-DFRONTEND=1 -D_GNU_SOURCE=1)
 add_definitions(-DUSE_OPENSSL=1 -DHAVE_BIO_GET_DATA=1 -DHAVE_BIO_METH_NEW=1)
 set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL REQUIRED)
+
+add_subdirectory(src)
+add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
 
 if(NOT MSVC)
   set(MYSQL_SCANNER_EXTRA_CFLAGS
@@ -127,7 +128,8 @@ message(${CMAKE_SOURCE_DIR})
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 set(PARAMETERS "-no-warnings")
-build_loadable_extension(${TARGET_NAME} ${PARAMETERS} mysql_scanner.cpp)
+
+build_loadable_extension(${TARGET_NAME} ${PARAMETERS} ${EXTENSION_SOURCES})
 
 target_link_libraries(${TARGET_NAME}_loadable_extension ${OPENSSL_LIBRARIES} -lmysqlcppconn)
 set_property(TARGET ${TARGET_NAME}_loadable_extension PROPERTY C_STANDARD 99)

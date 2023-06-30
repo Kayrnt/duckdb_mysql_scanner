@@ -1,73 +1,20 @@
 #define DUCKDB_BUILD_LOADABLE_EXTENSION
 #include "duckdb.hpp"
-#include "mysql/include/mysql/jdbc.h"
+#include <iostream>
+#include "../mysql/include/mysql/jdbc.h"
+
+#include "model/mysql_bind_data.hpp"
+#include "state/mysql_local_state.hpp"
+#include "state/mysql_global_state.hpp"
+#include "transformer/duckdb_to_mysql_request.cpp"
 
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/planner/table_filter.hpp"
-#include "duckdb/planner/filter/conjunction_filter.hpp"
-#include "duckdb/planner/filter/constant_filter.hpp"
 #include "duckdb/parser/parsed_data/create_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/function/scalar_function.hpp"
 
 using namespace duckdb;
-
-struct MysqlTypeInfo
-{
-	string name;
-	int64_t char_max_length;
-	int64_t numeric_precision;
-	int64_t numeric_scale;
-	string enum_values;
-};
-
-struct MysqlColumnInfo
-{
-	string column_name;
-	MysqlTypeInfo type_info;
-};
-
-struct MysqlBindData : public FunctionData
-{
-	~MysqlBindData()
-	{
-		if (conn)
-		{
-			conn->close();
-			conn = nullptr;
-		}
-	}
-
-	string host;
-	string username;
-	string password;
-
-	string schema_name;
-	string table_name;
-	idx_t approx_number_of_pages = 0;
-
-	vector<MysqlColumnInfo> columns;
-	vector<string> names;
-	vector<LogicalType> types;
-	vector<bool> needs_cast;
-
-	idx_t pages_per_task = 1000;
-
-	string snapshot;
-	bool in_recovery;
-
-	sql::Connection *conn = nullptr;
-
-public:
-	unique_ptr<FunctionData> Copy() const override
-	{
-		throw NotImplementedException("");
-	}
-	bool Equals(const FunctionData &other) const override
-	{
-		throw NotImplementedException("");
-	}
-};
 
 static idx_t MysqlMaxThreads(ClientContext &context, const FunctionData *bind_data_p)
 {
@@ -77,110 +24,6 @@ static idx_t MysqlMaxThreads(ClientContext &context, const FunctionData *bind_da
 	return bind_data->approx_number_of_pages / bind_data->pages_per_task;
 }
 
-struct MysqlLocalState : public LocalTableFunctionState
-{
-	~MysqlLocalState()
-	{
-		if (conn)
-		{
-			conn->close();
-			conn = nullptr;
-		}
-	}
-
-	bool done = false;
-	bool exec = false;
-	string base_sql = "";
-
-	idx_t start_page = 0;
-	idx_t current_page = 0;
-	idx_t end_page = 0;
-	idx_t pagesize = 0;
-
-	vector<column_t> column_ids;
-	TableFilterSet *filters;
-	sql::Connection *conn = nullptr;
-};
-
-struct MysqlGlobalState : public GlobalTableFunctionState
-{
-	MysqlGlobalState(idx_t max_threads) : start_page(0), max_threads(max_threads)
-	{
-	}
-
-	mutex lock;
-	idx_t start_page;
-	idx_t max_threads;
-
-	idx_t MaxThreads() const override
-	{
-		return max_threads;
-	}
-};
-
-static string TransformFilter(string &column_name, TableFilter &filter);
-
-static string CreateExpression(string &column_name, vector<unique_ptr<TableFilter>> &filters, string op)
-{
-	vector<string> filter_entries;
-	for (auto &filter : filters)
-	{
-		filter_entries.push_back(TransformFilter(column_name, *filter));
-	}
-	return "(" + StringUtil::Join(filter_entries, " " + op + " ") + ")";
-}
-
-static string TransformComparision(ExpressionType type)
-{
-	switch (type)
-	{
-	case ExpressionType::COMPARE_EQUAL:
-		return "=";
-	case ExpressionType::COMPARE_NOTEQUAL:
-		return "!=";
-	case ExpressionType::COMPARE_LESSTHAN:
-		return "<";
-	case ExpressionType::COMPARE_GREATERTHAN:
-		return ">";
-	case ExpressionType::COMPARE_LESSTHANOREQUALTO:
-		return "<=";
-	case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
-		return ">=";
-	default:
-		throw NotImplementedException("Unsupported expression type");
-	}
-}
-
-static string TransformFilter(string &column_name, TableFilter &filter)
-{
-	switch (filter.filter_type)
-	{
-	case TableFilterType::IS_NULL:
-		return column_name + " IS NULL";
-	case TableFilterType::IS_NOT_NULL:
-		return column_name + " IS NOT NULL";
-	case TableFilterType::CONJUNCTION_AND:
-	{
-		auto &conjunction_filter = (ConjunctionAndFilter &)filter;
-		return CreateExpression(column_name, conjunction_filter.child_filters, "AND");
-	}
-	case TableFilterType::CONJUNCTION_OR:
-	{
-		auto &conjunction_filter = (ConjunctionAndFilter &)filter;
-		return CreateExpression(column_name, conjunction_filter.child_filters, "OR");
-	}
-	case TableFilterType::CONSTANT_COMPARISON:
-	{
-		auto &constant_filter = (ConstantFilter &)filter;
-		// TODO properly escape ' in constant value
-		auto constant_string = "'" + constant_filter.constant.ToString() + "'";
-		auto operator_string = TransformComparision(constant_filter.comparison_type);
-		return StringUtil::Format("%s %s %s", column_name, operator_string, constant_string);
-	}
-	default:
-		throw InternalException("Unsupported table filter type");
-	}
-}
 
 static void MysqlInitPerTaskInternal(ClientContext &context, const MysqlBindData *bind_data_p,
 																		 MysqlLocalState &lstate, idx_t page_start_at, idx_t page_to_fetch)
@@ -210,7 +53,6 @@ static void MysqlInitPerTaskInternal(ClientContext &context, const MysqlBindData
 	// 	throw InternalException("Cannot return ROW_ID from Mysql table");
 	// }
 
-	std::string col_names;
 	// if (have_rowid)
 	// {
 	// 	// We are only counting rows, not interested in the actual values of the columns.
@@ -218,36 +60,8 @@ static void MysqlInitPerTaskInternal(ClientContext &context, const MysqlBindData
 	// }
 	// else
 	// {
-	col_names = StringUtil::Join(
-			lstate.column_ids.data(),
-			lstate.column_ids.size(),
-			", ",
-			[&](const idx_t column_id)
-			{ return StringUtil::Format("`%s`%s",
-																	bind_data->names[column_id],
-																	bind_data->needs_cast[column_id] ? "::VARCHAR" : ""); });
-	// }
 
-	string filter_string;
-	if (lstate.filters && !lstate.filters->filters.empty())
-	{
-		vector<string> filter_entries;
-		for (auto &entry : lstate.filters->filters)
-		{
-			// TODO properly escape " in column names
-			auto column_name = "`" + bind_data->names[lstate.column_ids[entry.first]] + "`";
-			auto &filter = *entry.second;
-			filter_entries.push_back(TransformFilter(column_name, filter));
-		}
-		filter_string = " WHERE " + StringUtil::Join(filter_entries, " AND ");
-	}
-
-	lstate.base_sql = StringUtil::Format(
-			R"(
-			SELECT %s FROM `%s`.`%s` %s
-			)",
-
-			col_names, bind_data->schema_name, bind_data->table_name, filter_string);
+	lstate.base_sql = DuckDBToMySqlRequest(bind_data_p, lstate);
 
 	lstate.start_page = page_start_at;
 	lstate.end_page = page_start_at + page_to_fetch;
