@@ -168,19 +168,11 @@ static void ProcessValue(
 	case LogicalTypeId::BLOB:
 	case LogicalTypeId::VARCHAR:
 	{
-		if (query_col_idx == 0)
-		{
-			InternalException("> AVANT VARCHAR query_col_idx == 0 !!!");
-		}
 		auto mysql_str = res->getString(col_idx);
 		auto c_str = mysql_str.c_str();
 		auto value_len = mysql_str.length();
 		auto duckdb_str = StringVector::AddStringOrBlob(out_vec, c_str, value_len);
 		FlatVector::GetData<string_t>(out_vec)[output_offset] = duckdb_str;
-		if (query_col_idx == 1)
-		{
-			InternalException("> APRES VARCHAR query_col_idx == 1 !!!");
-		}
 		break;
 	}
 	case LogicalTypeId::BOOLEAN:
