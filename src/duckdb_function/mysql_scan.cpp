@@ -6,7 +6,6 @@
 #include "../transformer/duckdb_to_mysql_request.cpp"
 #include "../transformer/mysql_to_duckdb_result.cpp"
 
-
 using namespace duckdb;
 
 static idx_t MysqlMaxThreads(ClientContext &context, const FunctionData *bind_data_p)
@@ -16,7 +15,6 @@ static idx_t MysqlMaxThreads(ClientContext &context, const FunctionData *bind_da
 	auto bind_data = (const MysqlBindData *)bind_data_p;
 	return bind_data->approx_number_of_pages / bind_data->pages_per_task;
 }
-
 
 static void MysqlInitPerTaskInternal(ClientContext &context, const MysqlBindData *bind_data_p,
 																		 MysqlLocalState &lstate, idx_t page_start_at, idx_t page_to_fetch)
@@ -67,6 +65,22 @@ static void MysqlInitPerTaskInternal(ClientContext &context, const MysqlBindData
 
 	lstate.exec = false;
 	lstate.done = false;
+
+	lstate.stmt = lstate.conn->createStatement();
+
+	auto sql = StringUtil::Format(
+			R"(
+					%s LIMIT %d OFFSET %d;
+				)",
+			lstate.base_sql, lstate.pagesize * lstate.end_page, lstate.start_page * lstate.current_page);
+
+	// std::cout << "running sql: " << sql << std::endl;
+	lstate.result_set = lstate.stmt->executeQuery(sql);
+	if (lstate.result_set->rowsCount() == 0)
+	{ // done here, lets try to get more
+		// std::cout << "done reading, result set empty" << std::endl;
+		lstate.done = true;
+	}
 }
 
 static bool MysqlParallelStateNext(ClientContext &context, const FunctionData *bind_data_p,
@@ -120,40 +134,24 @@ static void MysqlScan(ClientContext &context, TableFunctionInput &data, DataChun
 		}
 
 		idx_t output_offset = 0;
-		auto stmt = local_state.conn->createStatement();
-
-		auto sql = StringUtil::Format(
-				R"(
-							%s LIMIT %d OFFSET %d;
-						)",
-				local_state.base_sql, local_state.pagesize, local_state.pagesize * local_state.current_page);
-
-		// std::cout << "running sql: " << sql << std::endl;
-		auto res = stmt->executeQuery(sql);
-		if (res->rowsCount() == 0)
-		{ // done here, lets try to get more
-			// std::cout << "done reading, result set empty" << std::endl;
-			local_state.done = true;
-			continue;
-		}
 
 		// std::cout << "reading result set" << std::endl;
 
 		// iterate over the result set and write the result in the output data chunk
-		while (res->next())
+		while (local_state.result_set->next() && output_offset < STANDARD_VECTOR_SIZE)
 		{
 			// std::cout << "reading row: " << output_offset << std::endl;
 			// for each column from the bind data, read the value and write it to the result vector
 			for (idx_t query_col_idx = 0; query_col_idx < output.ColumnCount(); query_col_idx++)
 			{
-				// std::cout << "ITERATE result set/ query_col_idx: " << query_col_idx << " output_offset: " << output_offset << std::endl;
+				//std::cout << "ITERATE result set/ query_col_idx: " << query_col_idx << " output_offset: " << output_offset << std::endl;
 				auto table_col_idx = local_state.column_ids[query_col_idx];
 				auto &out_vec = output.data[query_col_idx];
-				// std::cout << "bind_data.names[table_col_idx] " << bind_data.names[table_col_idx] << std::endl;
-				// std::cout << "bind_data.types[table_col_idx] " << bind_data.types[table_col_idx].ToString() << std::endl;
-				// std::cout << "bind_data.columns[table_col_idx].type_info " << bind_data.columns[table_col_idx].type_info.name << std::endl;
+				//std::cout << "bind_data.names[table_col_idx] " << bind_data.names[table_col_idx] << std::endl;
+				//std::cout << "bind_data.types[table_col_idx] " << bind_data.types[table_col_idx].ToString() << std::endl;
+				//std::cout << "bind_data.columns[table_col_idx].type_info " << bind_data.columns[table_col_idx].type_info.name << std::endl;
 				//  print the size of output data
-				ProcessValue(res,
+				ProcessValue(local_state.result_set,
 										 bind_data.types[table_col_idx],
 										 &bind_data.columns[table_col_idx].type_info,
 										 out_vec,
@@ -169,11 +167,10 @@ static void MysqlScan(ClientContext &context, TableFunctionInput &data, DataChun
 		}
 
 		// std::cout << "output vector: " << output.size() << std::endl;
-		// std::cout << "closing statement" << std::endl;
 
-		res->close();
-		stmt->close();
-		// std::cout << "local_state.current_page: " << local_state.current_page << std::endl;
+		// local_state.result_set->close();
+		// local_state.stmt->close();
+		//  std::cout << "local_state.current_page: " << local_state.current_page << std::endl;
 		local_state.current_page += 1;
 
 		if (local_state.current_page == local_state.end_page)

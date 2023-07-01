@@ -44,5 +44,4 @@ test: release
 format: pull
 	cp duckdb/.clang-format .
 	clang-format --sort-includes=0 -style=file -i mysql_scanner.cpp
-	clang-format --sort-includes=0 -style=file -i concurrency_test.cpp
 	cmake-format -i CMakeLists.txt
