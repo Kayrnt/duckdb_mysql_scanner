@@ -3,7 +3,7 @@
 #include "duckdb.hpp"
 #include <iostream>
 #include <mysql/jdbc.h>
-#include "mysqlscanner_extension.hpp"
+#include "mysql_scanner_extension.hpp"
 
 #include "model/mysql_bind_data.hpp"
 #include "state/mysql_local_state.hpp"
@@ -79,26 +79,26 @@ namespace duckdb
 		con.Commit();
 	}
 
-	void MysqlscannerExtension::Load(DuckDB &db)
+	void Mysql_scannerExtension::Load(DuckDB &db)
 	{
 		LoadInternal(*db.instance);
 	}
 
-	std::string MysqlscannerExtension::Name()
+	std::string Mysql_scannerExtension::Name()
 	{
-		return "mysqlscanner";
+		return "mysql_scanner";
 	}
 
 } // namespace duckdb
 
 extern "C"
 {
-	DUCKDB_EXTENSION_API void mysqlscanner_init(duckdb::DatabaseInstance &db)
+	DUCKDB_EXTENSION_API void mysql_scanner_init(duckdb::DatabaseInstance &db)
 	{
 		LoadInternal(db);
 	}
 
-	DUCKDB_EXTENSION_API const char *mysqlscanner_version()
+	DUCKDB_EXTENSION_API const char *mysql_scanner_version()
 	{
 		return duckdb::DuckDB::LibraryVersion();
 	}

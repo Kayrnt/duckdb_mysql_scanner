@@ -4,7 +4,7 @@
 
 namespace duckdb {
 
-class MysqlscannerExtension : public Extension {
+class Mysql_scannerExtension : public Extension {
 public:
 	void Load(DuckDB &db) override;
 	std::string Name() override;

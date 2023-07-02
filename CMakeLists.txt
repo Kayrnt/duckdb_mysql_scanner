@@ -1,7 +1,7 @@
 # Define build variables
 cmake_minimum_required(VERSION 3.2)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(TARGET_NAME mysqlscanner)
+set(TARGET_NAME mysql_scanner)
 set(CMAKE_CXX_STANDARD 11)
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 project(${TARGET_NAME})
@@ -40,10 +40,7 @@ set(EXTENSION_DEPENDENCIES
 target_link_libraries(${EXTENSION_NAME} PUBLIC ${EXTENSION_DEPENDENCIES})
 
 # Set linker flags and libraries
-# set(CMAKE_VERBOSE_MAKEFILE ON)
 set(PARAMETERS "-warnings")
-# message(INSTALL_LIB_DIR: ${INSTALL_LIB_DIR})
-# message(DUCKDB_EXPORT_SET: ${DUCKDB_EXPORT_SET})
 
 # Build the loadable extension target
 build_loadable_extension(${TARGET_NAME} ${PARAMETERS} ${EXTENSION_SOURCES})
