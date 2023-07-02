@@ -1,8 +1,8 @@
-#ifndef MYSQL_LOCAL_STATE_HPP
-#define MYSQL_LOCAL_STATE_HPP
+#pragma once
 
 #include "duckdb.hpp"
 #include "../../mysql/include/mysql/jdbc.h"
+#include "connection_pool.hpp"
 
 using namespace duckdb;
 
@@ -17,9 +17,10 @@ struct MysqlLocalState : public LocalTableFunctionState {
             stmt->close();
             stmt = nullptr;
         }
-        if (conn) {
-            conn->close();
+        if (pool) {
+            pool->releaseConnection(conn);
             conn = nullptr;
+            pool = nullptr;
         }
     }
 
@@ -34,9 +35,8 @@ struct MysqlLocalState : public LocalTableFunctionState {
 
     std::vector<column_t> column_ids;
     TableFilterSet* filters;
+    ConnectionPool* pool = nullptr;
     sql::Connection* conn = nullptr;
     sql::ResultSet* result_set = nullptr;
     sql::Statement* stmt = nullptr;
 };
-
-#endif // MYSQL_LOCAL_STATE_HPP

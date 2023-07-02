@@ -1,4 +1,6 @@
 #include "duckdb.hpp"
+// #include "../util/mysql_connection_manager.cpp"
+#include "mysql_connection_manager.hpp"
 
 #include "../model/mysql_bind_data.hpp"
 #include "../state/mysql_local_state.hpp"
@@ -168,8 +170,6 @@ static void MysqlScan(ClientContext &context, TableFunctionInput &data, DataChun
 
 		// std::cout << "output vector: " << output.size() << std::endl;
 
-		// local_state.result_set->close();
-		// local_state.stmt->close();
 		//  std::cout << "local_state.current_page: " << local_state.current_page << std::endl;
 		local_state.current_page += 1;
 
@@ -190,16 +190,6 @@ static unique_ptr<GlobalTableFunctionState> MysqlInitGlobalState(ClientContext &
 			MysqlMaxThreads(context, input.bind_data.get()));
 }
 
-static sql::Connection *MysqlScanConnect(string host, string username, string password)
-{
-	sql::mysql::MySQL_Driver *driver;
-	sql::Connection *conn;
-	driver = sql::mysql::get_mysql_driver_instance();
-	// Establish a MySQL connection
-	conn = driver->connect(host, username, password);
-	return conn;
-}
-
 static unique_ptr<LocalTableFunctionState> MysqlInitLocalState(ExecutionContext &context,
 																															 TableFunctionInitInput &input,
 																															 GlobalTableFunctionState *global_state)
@@ -209,12 +199,12 @@ static unique_ptr<LocalTableFunctionState> MysqlInitLocalState(ExecutionContext 
 
 	auto local_state = make_uniq<MysqlLocalState>();
 	local_state->column_ids = input.column_ids;
-	local_state->conn = MysqlScanConnect(bind_data.host, bind_data.username, bind_data.password);
+	local_state->pool = MySQLConnectionManager::getConnectionPool(5, bind_data.host, bind_data.username, bind_data.password);
+	local_state->conn = (local_state->pool)->getConnection();
 	local_state->filters = input.filters.get();
 
 	if (!MysqlParallelStateNext(context.client, input.bind_data.get(), *local_state, gstate))
 	{
-		// throw InternalException("Failed to initialize MysqlLocalState");
 		local_state->done = true;
 	}
 	return std::move(local_state);
@@ -235,10 +225,13 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 
 	auto driver = sql::mysql::get_mysql_driver_instance();
 
+	auto connection_pool = MySQLConnectionManager::getConnectionPool(5, bind_data->host, bind_data->username, bind_data->password);
+	auto conn = connection_pool->getConnection();
+
 	// std::cout << "Connecting to MySQL server " << bind_data->host << std::endl;
 	//  Establish a MySQL connection
-	bind_data->conn = driver->connect(bind_data->host, bind_data->username, bind_data->password);
-	auto stmt1 = bind_data->conn->createStatement();
+	// bind_data->conn = driver->connect(bind_data->host, bind_data->username, bind_data->password);
+	auto stmt1 = conn->createStatement();
 
 	auto res1 = stmt1->executeQuery(
 			StringUtil::Format(
@@ -263,7 +256,7 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 	res1->close();
 	stmt1->close();
 
-	auto stmt2 = bind_data->conn->createStatement();
+	auto stmt2 = conn->createStatement();
 	auto res2 = stmt2->executeQuery(StringUtil::Format(
 			R"(
 			SELECT column_name,
@@ -314,6 +307,8 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 	}
 	res2->close();
 	stmt2->close();
+
+	connection_pool->releaseConnection(conn);
 
 	return_types = bind_data->types;
 	names = bind_data->names;

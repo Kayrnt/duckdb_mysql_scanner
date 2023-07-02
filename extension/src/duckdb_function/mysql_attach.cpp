@@ -1,6 +1,8 @@
 #include "duckdb.hpp"
 
 #include "../../mysql/include/mysql/jdbc.h"
+#include "mysql_connection_manager.hpp"
+#include "../state/mysql_global_state.hpp"
 
 //#include "../model/mysql_bind_data.hpp"
 //#include "../state/mysql_local_state.hpp"
@@ -66,17 +68,14 @@ static unique_ptr<FunctionData> AttachBind(ClientContext &context, TableFunction
 static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output)
 {
 	auto &data = (AttachFunctionData &)*data_p.bind_data;
+	auto &gstate = (MysqlGlobalState &)*data_p.global_state;
 	if (data.finished)
 	{
 		return;
 	}
 
-	sql::mysql::MySQL_Driver *driver;
-
-	driver = sql::mysql::get_mysql_driver_instance();
-
-	// Establish a MySQL connection
-	auto conn = driver->connect(data.host, data.username, data.password);
+	gstate.pool = MySQLConnectionManager::getConnectionPool(5, data.host, data.username, data.password);
+	auto conn = gstate.pool->getConnection();
 
 	auto dconn = Connection(context.db->GetDatabase(context));
 	auto stmt = conn->createStatement();
@@ -100,7 +99,7 @@ static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, D
 	}
 	res->close();
 	stmt->close();
-	conn->close();
+	gstate.pool->releaseConnection(conn);
 
 	data.finished = true;
 }

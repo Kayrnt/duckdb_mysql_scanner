@@ -47,7 +47,7 @@ namespace duckdb
 	{
 	public:
 		MysqlAttachFunction()
-				: TableFunction("mysql_attach", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, AttachFunction, AttachBind)
+				: TableFunction("mysql_attach", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, AttachFunction, AttachBind, MysqlInitGlobalState)
 		{
 			named_parameters["overwrite"] = LogicalType::BOOLEAN;
 			named_parameters["filter_pushdown"] = LogicalType::BOOLEAN;

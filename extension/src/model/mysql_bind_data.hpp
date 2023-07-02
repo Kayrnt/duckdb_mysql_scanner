@@ -25,11 +25,6 @@ struct MysqlBindData : public FunctionData
 {
 	~MysqlBindData()
 	{
-		if (conn)
-		{
-			conn->close();
-			conn = nullptr;
-		}
 	}
 
 	string host;
@@ -49,8 +44,6 @@ struct MysqlBindData : public FunctionData
 
 	string snapshot;
 	bool in_recovery;
-
-	sql::Connection *conn = nullptr;
 
 public:
 	unique_ptr<FunctionData> Copy() const override
