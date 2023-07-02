@@ -12,7 +12,6 @@ MYSQL_SCANNER_PATH=${PWD}
 
 clean:
 	rm -rf build
-	rm -rf mysql
 
 pull:
 	git submodule init

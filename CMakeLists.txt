@@ -1,48 +1,43 @@
-cmake_minimum_required(VERSION 2.8.12)
+# Define build variables
+cmake_minimum_required(VERSION 3.2)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(TARGET_NAME mysql_scanner)
-project(${TARGET_NAME})
+set(CMAKE_CXX_STANDARD 11)
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
-
 set(FULL_PATH_TO_MYSQL_CONNECTOR_CPP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mysql)
-include_directories(${FULL_PATH_TO_MYSQL_CONNECTOR_CPP_DIR}/include)
-link_directories(${FULL_PATH_TO_MYSQL_CONNECTOR_CPP_DIR}/lib64)
+project(${TARGET_NAME})
 
-add_definitions(-DFRONTEND=1 -D_GNU_SOURCE=1)
-add_definitions(-DUSE_OPENSSL=1 -DHAVE_BIO_GET_DATA=1 -DHAVE_BIO_METH_NEW=1)
-set(OPENSSL_USE_STATIC_LIBS TRUE)
+
+# Setup OpenSSL
+set(OPENSSL_USE_STATIC_LIBS ON)
 find_package(OpenSSL REQUIRED)
 
+# Include directories
+include_directories(
+  ${FULL_PATH_TO_MYSQL_CONNECTOR_CPP_DIR}/include
+)
+
+# Link directories
+link_directories(${FULL_PATH_TO_MYSQL_CONNECTOR_CPP_DIR}/lib64)
+
+# Add subdirectory for source files
 add_subdirectory(src)
+
+# Create the extension library
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
 
-if(NOT MSVC)
-  set(MYSQL_SCANNER_EXTRA_CFLAGS
-      "-Wno-pedantic -Wno-sign-compare -Wno-unused-variable")
-endif()
-
-set(CMAKE_CXX_FLAGS_DEBUG
-    "${CMAKE_CXX_FLAGS_DEBUG} ${MYSQL_SCANNER_EXTRA_CFLAGS}")
-set(CMAKE_CXX_FLAGS_RELEASE
-    "${CMAKE_CXX_FLAGS_RELEASE} ${MYSQL_SCANNER_EXTRA_CFLAGS}")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO
-    "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} ${MYSQL_SCANNER_EXTRA_CFLAGS}")
-
-set(CMAKE_C_FLAGS_DEBUG
-    "${CMAKE_C_FLAGS_DEBUG} ${MYSQL_SCANNER_EXTRA_CFLAGS} ${MYSQL_SCANNER_EXTRA_CFLAGS}"
-)
-set(CMAKE_C_FLAGS_RELEASE
-    "${CMAKE_C_FLAGS_RELEASE} ${MYSQL_SCANNER_EXTRA_CFLAGS}")
-set(CMAKE_C_FLAGS_RELWITHDEBINFO
-    "${CMAKE_C_FLAGS_RELWITHDEBINFO} ${MYSQL_SCANNER_EXTRA_CFLAGS}")
-
-include_directories(${OPENSSL_INCLUDE_DIR})
-
-message(${CMAKE_SOURCE_DIR})
-
+# Set linker flags and libraries
 set(CMAKE_VERBOSE_MAKEFILE ON)
-set(PARAMETERS "-no-warnings")
+set(PARAMETERS "-warnings")
 
+# Build the loadable extension target
 build_loadable_extension(${TARGET_NAME} ${PARAMETERS} ${EXTENSION_SOURCES})
 
-target_link_libraries(${TARGET_NAME}_loadable_extension ${OPENSSL_LIBRARIES} -lmysqlcppconn)
-set_property(TARGET ${TARGET_NAME}_loadable_extension PROPERTY C_STANDARD 99)
+# Link the loadable extension target with libraries
+target_link_libraries(${TARGET_NAME}_loadable_extension OpenSSL::SSL OpenSSL::Crypto -lmysqlcppconn)
+
+install(
+  TARGETS ${EXTENSION_NAME}
+  EXPORT "${DUCKDB_EXPORT_SET}"
+  LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
+  ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
