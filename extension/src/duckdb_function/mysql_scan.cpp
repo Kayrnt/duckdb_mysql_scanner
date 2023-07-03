@@ -1,5 +1,5 @@
 #include "duckdb.hpp"
-// #include "../util/mysql_connection_manager.cpp"
+#include <thread>
 #include "mysql_connection_manager.hpp"
 
 #include "../model/mysql_bind_data.hpp"
@@ -7,6 +7,7 @@
 #include "../state/mysql_global_state.hpp"
 #include "../transformer/duckdb_to_mysql_request.cpp"
 #include "../transformer/mysql_to_duckdb_result.cpp"
+
 
 using namespace duckdb;
 
@@ -210,6 +211,103 @@ static unique_ptr<LocalTableFunctionState> MysqlInitLocalState(ExecutionContext 
 	return std::move(local_state);
 }
 
+static int64_t GetApproxNumberOfPageForTable(ConnectionPool* connection_pool, std::string schema_name, std::string table_name){
+	auto conn = connection_pool->getConnection();
+	auto stmt1 = conn->createStatement();
+	int64_t approx_number_of_pages = 0;
+
+	auto res1 = stmt1->executeQuery(
+			StringUtil::Format(
+					R"(SELECT CEIL(COUNT(*) / %d) FROM %s.%s)",
+					STANDARD_VECTOR_SIZE, schema_name, table_name));
+	if (res1->rowsCount() != 1)
+	{
+		throw InvalidInputException("Mysql table \"%s\".\"%s\" not found", schema_name,
+																table_name);
+	}
+	if (res1->next())
+	{
+		approx_number_of_pages = res1->getInt64(1);
+	}
+	else
+	{
+		// Handle the case where no rows were returned
+		// or unable to move to the first row
+		throw InvalidInputException("Failed to fetch data from result set");
+	}
+
+	res1->close();
+	stmt1->close();
+	connection_pool->releaseConnection(conn);
+	return approx_number_of_pages;
+}
+
+static std::tuple<vector<MysqlColumnInfo>, vector<string>, vector<LogicalType>, vector<bool>> GetTableTypesInfos(ConnectionPool* connection_pool, std::string schema_name, std::string table_name){
+
+	vector<MysqlColumnInfo> columns;
+	vector<string> names;
+	vector<LogicalType> types;
+	vector<bool> needs_cast;
+
+	auto conn = connection_pool->getConnection();
+	auto stmt2 = conn->createStatement();
+	auto res2 = stmt2->executeQuery(StringUtil::Format(
+			R"(
+			SELECT column_name,
+						 DATA_TYPE,
+       			 character_maximum_length,
+						 numeric_precision,
+						 numeric_scale,
+						 IF(DATA_TYPE = 'enum', SUBSTRING(COLUMN_TYPE,5), NULL) enum_values
+			FROM   information_schema.columns 
+			WHERE  table_schema = '%s'
+			AND 	 table_name = '%s';
+			)",
+			schema_name, table_name));
+
+	// can't scan a table without columns (yes those exist)
+	if (res2->rowsCount() == 0)
+	{
+		throw InvalidInputException("Table %s does not contain any columns.", table_name);
+	}
+
+	// set the column types in a MysqlColumnInfo struct by iterating over the result set
+	while (res2->next())
+	{
+		MysqlColumnInfo info;
+		info.column_name = res2->getString(1);
+		info.type_info.name = res2->getString(2);
+		info.type_info.char_max_length = res2->getInt(3);
+		info.type_info.numeric_precision = res2->getInt(4);
+		info.type_info.numeric_scale = res2->getInt(5);
+		info.type_info.enum_values = res2->getString(6);
+
+		names.push_back(info.column_name);
+
+		auto duckdb_type = DuckDBType(info);
+		// we cast unsupported types to varchar on read
+		auto col_needs_cast = duckdb_type == LogicalType::INVALID;
+		needs_cast.push_back(col_needs_cast);
+		if (!col_needs_cast)
+		{
+			types.push_back(std::move(duckdb_type));
+		}
+		else
+		{
+			types.push_back(LogicalType::VARCHAR);
+		}
+
+		columns.push_back(info);
+	}
+	res2->close();
+	stmt2->close();
+
+	connection_pool->releaseConnection(conn);
+
+	return std::make_tuple(columns, names, types, needs_cast);
+
+}
+
 static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionBindInput &input,
 																					vector<LogicalType> &return_types, vector<string> &names)
 {
@@ -226,89 +324,21 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 	auto driver = sql::mysql::get_mysql_driver_instance();
 
 	auto connection_pool = MySQLConnectionManager::getConnectionPool(5, bind_data->host, bind_data->username, bind_data->password);
-	auto conn = connection_pool->getConnection();
 
-	// std::cout << "Connecting to MySQL server " << bind_data->host << std::endl;
-	//  Establish a MySQL connection
-	// bind_data->conn = driver->connect(bind_data->host, bind_data->username, bind_data->password);
-	auto stmt1 = conn->createStatement();
+	// // Create threads for concurrent execution
+  //   std::thread t1(GetNumberOfShard, connection_pool, bind_data.get());
+  //   std::thread t2(GetTableTypesInfos, connection_pool, bind_data.get());
 
-	auto res1 = stmt1->executeQuery(
-			StringUtil::Format(
-					R"(SELECT CEIL(COUNT(*) / %d) FROM %s.%s)",
-					STANDARD_VECTOR_SIZE, bind_data->schema_name, bind_data->table_name));
-	if (res1->rowsCount() != 1)
-	{
-		throw InvalidInputException("Mysql table \"%s\".\"%s\" not found", bind_data->schema_name,
-																bind_data->table_name);
-	}
-	if (res1->next())
-	{
-		bind_data->approx_number_of_pages = res1->getInt64(1);
-	}
-	else
-	{
-		// Handle the case where no rows were returned
-		// or unable to move to the first row
-		throw InvalidInputException("Failed to fetch data from result set");
-	}
+  //   // Wait for both threads to finish
+  //   t1.join();
+  //   t2.join();
 
-	res1->close();
-	stmt1->close();
-
-	auto stmt2 = conn->createStatement();
-	auto res2 = stmt2->executeQuery(StringUtil::Format(
-			R"(
-			SELECT column_name,
-						 DATA_TYPE,
-       			 character_maximum_length,
-						 numeric_precision,
-						 numeric_scale,
-						 IF(DATA_TYPE = 'enum', SUBSTRING(COLUMN_TYPE,5), NULL) enum_values
-			FROM   information_schema.columns 
-			WHERE  table_schema = '%s'
-			AND 	 table_name = '%s';
-			)",
-			bind_data->schema_name, bind_data->table_name));
-
-	// can't scan a table without columns (yes those exist)
-	if (res2->rowsCount() == 0)
-	{
-		throw InvalidInputException("Table %s does not contain any columns.", bind_data->table_name);
-	}
-
-	// set the column types in a MysqlColumnInfo struct by iterating over the result set
-	while (res2->next())
-	{
-		MysqlColumnInfo info;
-		info.column_name = res2->getString(1);
-		info.type_info.name = res2->getString(2);
-		info.type_info.char_max_length = res2->getInt(3);
-		info.type_info.numeric_precision = res2->getInt(4);
-		info.type_info.numeric_scale = res2->getInt(5);
-		info.type_info.enum_values = res2->getString(6);
-
-		bind_data->names.push_back(info.column_name);
-
-		auto duckdb_type = DuckDBType(info);
-		// we cast unsupported types to varchar on read
-		auto needs_cast = duckdb_type == LogicalType::INVALID;
-		bind_data->needs_cast.push_back(needs_cast);
-		if (!needs_cast)
-		{
-			bind_data->types.push_back(std::move(duckdb_type));
-		}
-		else
-		{
-			bind_data->types.push_back(LogicalType::VARCHAR);
-		}
-
-		bind_data->columns.push_back(info);
-	}
-	res2->close();
-	stmt2->close();
-
-	connection_pool->releaseConnection(conn);
+	bind_data->approx_number_of_pages = GetApproxNumberOfPageForTable(connection_pool, bind_data->schema_name, bind_data->table_name);
+	auto columns_tuple = GetTableTypesInfos(connection_pool, bind_data->schema_name, bind_data->table_name);
+	bind_data->columns = std::get<0>(columns_tuple);
+	bind_data->names = std::get<1>(columns_tuple);
+	bind_data->types = std::get<2>(columns_tuple);
+	bind_data->needs_cast = std::get<3>(columns_tuple);
 
 	return_types = bind_data->types;
 	names = bind_data->names;

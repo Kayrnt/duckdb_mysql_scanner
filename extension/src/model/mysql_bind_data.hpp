@@ -1,5 +1,4 @@
-#ifndef MYSQL_GLOBAL_STATE_HPP
-#define MYSQL_GLOBAL_STATE_HPP
+#pragma once
 
 #include "duckdb.hpp"
 #include "../../mysql/include/mysql/jdbc.h"
@@ -55,5 +54,3 @@ public:
 		throw NotImplementedException("");
 	}
 };
-
-#endif // MYSQL_GLOBAL_STATE_HPP

@@ -4,13 +4,6 @@
 #include "mysql_connection_manager.hpp"
 #include "../state/mysql_global_state.hpp"
 
-//#include "../model/mysql_bind_data.hpp"
-//#include "../state/mysql_local_state.hpp"
-//#include "../state/mysql_global_state.hpp"
-//#include "../transformer/duckdb_to_mysql_request.cpp"
-//#include "../transformer/mysql_to_duckdb_result.cpp"
-
-
 using namespace duckdb;
 
 struct AttachFunctionData : public TableFunctionData
