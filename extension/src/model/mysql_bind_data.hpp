@@ -2,6 +2,7 @@
 
 #include "duckdb.hpp"
 #include "../../mysql/include/mysql/jdbc.h"
+#include "paged_mysql_state.hpp"
 
 using namespace duckdb;
 
@@ -20,7 +21,7 @@ struct MysqlColumnInfo
 	MysqlTypeInfo type_info;
 };
 
-struct MysqlBindData : public FunctionData
+struct MysqlBindData : public FunctionData, public PagedMysqlState
 {
 	~MysqlBindData()
 	{
@@ -32,19 +33,36 @@ struct MysqlBindData : public FunctionData
 
 	string schema_name;
 	string table_name;
+
 	idx_t approx_number_of_pages = 0;
+	idx_t pages_per_task = 1000;
 
 	vector<MysqlColumnInfo> columns;
 	vector<string> names;
 	vector<LogicalType> types;
 	vector<bool> needs_cast;
 
-	idx_t pages_per_task = 1000;
-
 	string snapshot;
 	bool in_recovery;
 
 public:
+	idx_t get_approx_number_of_pages() const override
+	{
+		return approx_number_of_pages;
+	}
+	idx_t get_pages_per_task() const override
+	{
+		return pages_per_task;
+	}
+	void set_approx_number_of_pages(idx_t approx_number_of_pages) override
+	{
+		this->approx_number_of_pages = approx_number_of_pages;
+	}
+	void set_pages_per_task(idx_t pages_per_task) override
+	{
+		this->pages_per_task = pages_per_task;
+	}
+	
 	unique_ptr<FunctionData> Copy() const override
 	{
 		throw NotImplementedException("");

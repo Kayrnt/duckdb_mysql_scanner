@@ -4,14 +4,14 @@
 #include <thread>
 #include <mutex>
 #include <map>
-#include <vector>
+#include <queue>
 #include <string>
 
 class ConnectionPool
 {
 private:
   sql::mysql::MySQL_Driver *driver;
-  std::vector<sql::Connection *> connections;
+  std::queue<sql::Connection*> connections = std::queue<sql::Connection*>();
   std::mutex connectionsMutex;
 
 public:

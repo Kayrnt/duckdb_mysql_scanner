@@ -1,5 +1,6 @@
 #include "duckdb.hpp"
 #include <thread>
+#include <future>
 #include "mysql_connection_manager.hpp"
 
 #include "../model/mysql_bind_data.hpp"
@@ -7,6 +8,7 @@
 #include "../state/mysql_global_state.hpp"
 #include "../transformer/duckdb_to_mysql_request.cpp"
 #include "../transformer/mysql_to_duckdb_result.cpp"
+#include "../model/attach_function_data.cpp"
 
 
 using namespace duckdb;
@@ -15,8 +17,17 @@ static idx_t MysqlMaxThreads(ClientContext &context, const FunctionData *bind_da
 {
 	D_ASSERT(bind_data_p);
 
-	auto bind_data = (const MysqlBindData *)bind_data_p;
-	return bind_data->approx_number_of_pages / bind_data->pages_per_task;
+	const PagedMysqlState* bind_data = nullptr;
+
+	if (auto attach_data = dynamic_cast<const AttachFunctionData*>(bind_data_p)) {
+			bind_data = attach_data;
+	} else if (auto mysql_data = dynamic_cast<const MysqlBindData*>(bind_data_p)) {
+			bind_data = mysql_data;
+	} else {
+			//TODO handle the case when bind_data_p doesn't point to AttachFunctionData or MysqlBindData
+	}
+
+	return bind_data->get_approx_number_of_pages() / bind_data->get_pages_per_task();
 }
 
 static void MysqlInitPerTaskInternal(ClientContext &context, const MysqlBindData *bind_data_p,
@@ -308,6 +319,29 @@ static std::tuple<vector<MysqlColumnInfo>, vector<string>, vector<LogicalType>, 
 
 }
 
+static void printCurrentTime(string msg){
+	// Get the current time point
+    auto currentTime = std::chrono::system_clock::now();
+
+    // Get the duration since the epoch
+    auto duration = currentTime.time_since_epoch();
+
+    // Get the number of milliseconds
+    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+
+    // Extract the milliseconds from the duration
+    long long ms = milliseconds.count() % 1000;
+
+    // Convert the time point to a time_t object
+    std::time_t currentTimeT = std::chrono::system_clock::to_time_t(currentTime);
+
+    // Convert the time_t object to a string
+    std::string timeString = std::ctime(&currentTimeT);
+
+    // Print the time string with milliseconds
+    std::cout << "Current time with milliseconds: " << timeString << " // ms: " << ms << " for " << msg << std::endl;
+}
+
 static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionBindInput &input,
 																					vector<LogicalType> &return_types, vector<string> &names)
 {
@@ -332,13 +366,28 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
   //   // Wait for both threads to finish
   //   t1.join();
   //   t2.join();
+	
+	// print current time with milliseconds and append GetApproxNumberOfPageForTable
+	printCurrentTime("GetApproxNumberOfPageForTable");
 
-	bind_data->approx_number_of_pages = GetApproxNumberOfPageForTable(connection_pool, bind_data->schema_name, bind_data->table_name);
+	// std::cout << "Current time: " << std::ctime(&result) << " GetApproxNumberOfPageForTable " << bind_data->table_name << std::endl;
+
+	std::future<int64_t> fut = std::async (GetApproxNumberOfPageForTable, connection_pool, bind_data->schema_name, bind_data->table_name);
+	printCurrentTime("GetTableTypesInfos");
 	auto columns_tuple = GetTableTypesInfos(connection_pool, bind_data->schema_name, bind_data->table_name);
+	printCurrentTime("GetTableTypesInfos DONE");
 	bind_data->columns = std::get<0>(columns_tuple);
 	bind_data->names = std::get<1>(columns_tuple);
 	bind_data->types = std::get<2>(columns_tuple);
 	bind_data->needs_cast = std::get<3>(columns_tuple);
+	auto nb_of_pages = fut.wait_until(std::chrono::system_clock::now() + std::chrono::seconds(30));
+	if (nb_of_pages == std::future_status::timeout)
+	{
+		throw std::runtime_error("Timeout while fetching number of pages");
+	} else {
+		bind_data->approx_number_of_pages = fut.get();
+	}
+	printCurrentTime("GetApproxNumberOfPageForTable DONE");
 
 	return_types = bind_data->types;
 	names = bind_data->names;

@@ -3,26 +3,11 @@
 #include "../../mysql/include/mysql/jdbc.h"
 #include "mysql_connection_manager.hpp"
 #include "../state/mysql_global_state.hpp"
+#include "paged_mysql_state.hpp"
+#include "../model/attach_function_data.cpp"
 
 using namespace duckdb;
 
-struct AttachFunctionData : public TableFunctionData
-{
-	AttachFunctionData()
-	{
-	}
-
-	bool finished = false;
-	string source_schema = "public";
-	string sink_schema = "main";
-	string suffix = "";
-	bool overwrite = false;
-	bool filter_pushdown = true;
-
-	string host;
-	string username;
-	string password;
-};
 
 static unique_ptr<FunctionData> AttachBind(ClientContext &context, TableFunctionBindInput &input,
 																					 vector<LogicalType> &return_types, vector<string> &names)
