@@ -43,3 +43,7 @@ build
 
 # Dependencies
 mysql
+
+# Build
+/target
+/build

@@ -1,53 +1,59 @@
 # Define build variables
-cmake_minimum_required(VERSION 3.2)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(TARGET_NAME mysql_scanner)
-set(CMAKE_CXX_STANDARD 11)
-set(EXTENSION_NAME ${TARGET_NAME}_extension)
-project(${TARGET_NAME})
+cmake_minimum_required(VERSION 3.22)
 
+if (POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif ()
+
+SET(TARGET_NAME mysql_scanner)
+project(c_${TARGET_NAME} VERSION 0.1)
+set(EXTENSION_NAME mysql_scanner)
+
+if (APPLE)
+  # POLICY CMP0042
+  set(CMAKE_MACOSX_RPATH 1)
+endif()
+
+include(FetchContent)
+
+if(UNIX AND NOT APPLE)
+        find_package(OpenSSL REQUIRED)
+endif()
+
+FetchContent_Declare(
+        Corrosion
+        GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
+        GIT_TAG v0.3.2 # Optionally specify a commit hash, version tag or branch here
+)
+set(BUILD_UNITTESTS FALSE) # Disable unit test build in duckdb
 
 # Setup OpenSSL
 set(OPENSSL_USE_STATIC_LIBS ON)
 find_package(OpenSSL REQUIRED)
 
-# Extension sources files
-include_directories(extension/include)
-add_subdirectory(extension/src)
+FetchContent_MakeAvailable(Corrosion)
 
-# Set the path to the MySQL Connector/C++ library
-set(MYSQL_CONNECTOR_CPP_PATH ${CMAKE_CURRENT_SOURCE_DIR}/mysql)
-# Set the path to the MySQL Connector/C++ headers
-set(MYSQL_CONNECTOR_CPP_INCLUDE ${MYSQL_CONNECTOR_CPP_PATH}/include)
-# Set the path to the MySQL Connector/C++ library files
-set(MYSQL_CONNECTOR_CPP_LIB ${MYSQL_CONNECTOR_CPP_PATH}/lib64)
-# Add the MySQL Connector/C++ headers
-include_directories(${MYSQL_CONNECTOR_CPP_INCLUDE})
-# Add the MySQL Connector/C++ library
-link_directories(${MYSQL_CONNECTOR_CPP_LIB})
+corrosion_import_crate(MANIFEST_PATH ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/duckdb/src/include)
 
-# Create the extension library
-add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
+set(ALL_SOURCES src/extension.c src/extension.h)
 
-set(EXTENSION_DEPENDENCIES 
-   ${MYSQL_CONNECTOR_CPP_LIB}/libmysqlcppconn-static.a
-   ${MYSQL_CONNECTOR_CPP_LIB}/libssl.dylib
-   ${MYSQL_CONNECTOR_CPP_LIB}/libcrypto.dylib
-   resolv
+SET(EXTENSION_STATIC_BUILD 1)
+set(PARAMETERS "-no-warnings")
+build_loadable_extension(${EXTENSION_NAME} ${PARAMETERS} ${ALL_SOURCES})
+
+set(LIB_NAME ${EXTENSION_NAME}_loadable_extension)
+
+set_target_properties(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)
+target_link_libraries(${LIB_NAME}
+        "${CMAKE_CURRENT_BINARY_DIR}/librs_duckdb_mysql.a"
+        duckdb_static
+	${OPENSSL_LIBRARIES}
 )
 
-# Add dependencies to extension
-target_link_libraries(${EXTENSION_NAME} PUBLIC ${EXTENSION_DEPENDENCIES})
-
-# Set linker flags and libraries
-set(PARAMETERS "-warnings")
-
-# Build the loadable extension target
-build_loadable_extension(${TARGET_NAME} ${PARAMETERS} ${EXTENSION_SOURCES})
-target_link_libraries(${TARGET_NAME}_loadable_extension ${EXTENSION_DEPENDENCIES})
-
-install(
-  TARGETS ${EXTENSION_NAME}
-  EXPORT "${DUCKDB_EXPORT_SET}"
-  LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
-  ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
+if (APPLE)
+        target_link_libraries(${LIB_NAME}
+                "-framework CoreFoundation"
+                "-framework Security"
+                "-framework Accelerate")
+endif()

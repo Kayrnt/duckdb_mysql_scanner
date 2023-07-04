@@ -1,0 +1,24 @@
+[package]
+name = "rs-duckdb-mysql-scanner"
+version = "0.1.0"
+edition = "2021"
+description = "Purely experimental DuckDB extension framework"
+license-file = "LICENSE"
+documentation = "https://github.com/Kayrnt/duckdb_mysql_scanner"
+homepage = "https://github.com/Kayrnt/duckdb_mysql_scanner"
+repository = "https://github.com/Kayrnt/duckdb_mysql_scanner"
+
+[dependencies]
+#duckdb = { version = "0.8.1" }
+#libduckdb-sys = { version = "0.8.1", features = ["bundled"] }
+duckdb-ext = { path = "./duckdb-ext" }
+tokio = { version = "1.23.0", features=['full'] }
+lazy_static = "1.4.0"
+anyhow = { version = "1.0.68", features = ["backtrace"] }
+futures = "0.3"
+
+[dev-dependencies]
+
+[lib]
+name = "rs_duckdb_mysql"
+crate-type = ["staticlib"]
