@@ -1,12 +1,39 @@
 # DuckDB mysql_scanner extension
 
-> The project is in progress and not yet on par with postgres scanner
+> The project is in progress and not yet on par with postgres scanner or other integrations. There is no releases yet so you have to build it yourself.
 
 The mysql_scanner extension allows DuckDB to directly read data from a running MySQL instance. The data can be queried directly from the underlying MySQL tables, or read into DuckDB tables.
 
 ## Usage
 
-### Attach a MySQL database
+### Attach a single table (:white_check_mark: working)
+
+If you prefer to not attach all tables, but just query a single table, that is possible using the `MYSQL_SCAN` table-producing function, e.g.
+
+```SQL
+SELECT * FROM MYSQL_SCAN('', 'public', 'mytable');
+```
+
+`MYSQL_SCAN` takes 5 string parameters:
+
+- the host (ip or name)
+- the user name
+- the password for that user
+- the schema name in MySQL
+- the table name in MySQL
+
+#### `sink_schema` usage
+
+attach MYSQL schema to another DuckDB schema.
+
+```sql
+-- create a new schema in DuckDB first
+CREATE SCHEMA abc;
+CALL mysql_attach('localhost', 'root', '', source_schema='information_schema', sink_schema='abc');
+SELECT table_schema,table_name,table_type FROM tables;
+```
+
+### Attach a MySQL database (:warning: :red_circle: not yet working)
 
 First load the extension:
 
@@ -40,33 +67,6 @@ PRAGMA show_tables;
 ```
 
 Then you can query those views normally using SQL.
-
-### Attach a single table
-
-If you prefer to not attach all tables, but just query a single table, that is possible using the `MYSQL_SCAN` table-producing function, e.g.
-
-```SQL
-SELECT * FROM MYSQL_SCAN('', 'public', 'mytable');
-```
-
-`MYSQL_SCAN` takes 5 string parameters:
-
-- the host (ip or name)
-- the user name
-- the password for that user
-- the schema name in MySQL
-- the table name in MySQL
-
-#### `sink_schema` usage
-
-attach MYSQL schema to another DuckDB schema.
-
-```sql
--- create a new schema in DuckDB first
-CREATE SCHEMA abc;
-CALL mysql_attach('localhost', 'root', '', source_schema='information_schema', sink_schema='abc');
-SELECT table_schema,table_name,table_type FROM tables;
-```
 
 ## Building & Loading the Extension
 
@@ -107,6 +107,11 @@ LOAD 'build/release/extension/mysql_scanner/mysql_scanner.duckdb_extension';
 
 ## License
 
-Copyright 2023 Kayrnt [kayrnt@gmail.com].
+Copyright 2023 [Kayrnt](kayrnt@gmail.com).
 
 This project is licensed under the GNU General Public License (LICENSE-GPL).
+
+## Acknowledgments
+
+- Inspired by [Postgres scanner extension](https://github.com/duckdblabs/postgres_scanner)
+- Rely on [DuckDB](https://github.com/duckdb/duckdb)

@@ -5,7 +5,7 @@ std::mutex MySQLConnectionManager::mapMutex;
 
 ConnectionPool *MySQLConnectionManager::getConnectionPool(int poolSize, const std::string &host, const std::string &username, const std::string &password)
 {
-  std::cout << "Retrieving connection pool" << std::endl;
+  // std::cout << "Retrieving connection pool" << std::endl;
   std::lock_guard<std::mutex> lock(mapMutex);
 
   auto key = std::make_tuple(host, username, password);
@@ -13,12 +13,12 @@ ConnectionPool *MySQLConnectionManager::getConnectionPool(int poolSize, const st
 
   if (existing_connection_pool != connectionMap.end())
   {
-    std::cout << "Connection pool already exists, return existing!" << std::endl;
+    // std::cout << "Connection pool already exists, return existing!" << std::endl;
     // ConnectionPool already exists, return the existing instance
     return existing_connection_pool->second;
   }
 
-  std::cout << "Connection pool doesn't exist, create new!" << std::endl;
+  // std::cout << "Connection pool doesn't exist, create new!" << std::endl;
   // ConnectionPool doesn't exist, create a new instance and add it to the map
   ConnectionPool *connectionPool = new ConnectionPool(poolSize, host, username, password);
   connectionMap[key] = connectionPool;
@@ -27,7 +27,7 @@ ConnectionPool *MySQLConnectionManager::getConnectionPool(int poolSize, const st
 
 void MySQLConnectionManager::close(const std::string &host, const std::string &username, const std::string &password)
 {
-  std::cout << "MySQLConnectionManager :: Closing connection pool" << std::endl;
+  // std::cout << "MySQLConnectionManager :: Closing connection pool" << std::endl;
   std::lock_guard<std::mutex> lock(mapMutex);
 
   auto key = std::make_tuple(host, username, password);
@@ -43,7 +43,7 @@ void MySQLConnectionManager::close(const std::string &host, const std::string &u
 
 MySQLConnectionManager::~MySQLConnectionManager()
 {
-  std::cout << "Destroying connection manager" << std::endl;
+  // std::cout << "Destroying connection manager" << std::endl;
   std::lock_guard<std::mutex> lock(mapMutex);
 
   for (auto &connection_key : connectionMap)

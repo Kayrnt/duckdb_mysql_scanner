@@ -339,7 +339,7 @@ static void printCurrentTime(string msg){
     std::string timeString = std::ctime(&currentTimeT);
 
     // Print the time string with milliseconds
-    std::cout << "Current time with milliseconds: " << timeString << " // ms: " << ms << " for " << msg << std::endl;
+    // std::cout << "Current time with milliseconds: " << timeString << " // ms: " << ms << " for " << msg << std::endl;
 }
 
 static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionBindInput &input,
