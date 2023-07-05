@@ -54,38 +54,6 @@ unsafe extern "C" fn drop_scan_bind_data_c(v: *mut c_void) {
     duckdb_free(v);
 }
 
-/*struct ResultStream {
-    stream:
-        Pin<Box<dyn Stream<Item = Result<GetQueryResultsOutput, SdkError<GetQueryResultsError>>>>>,
-}
-
-impl ResultStream {
-    pub fn new(
-        stream: Box<
-            dyn Stream<Item = Result<GetQueryResultsOutput, SdkError<GetQueryResultsError>>>,
-        >,
-    ) -> Self {
-        Self {
-            stream: stream.into(),
-        }
-    }
-}
-
-impl Stream for ResultStream {
-    type Item = Result<GetQueryResultsOutput, SdkError<GetQueryResultsError>>;
-
-    // https://stackoverflow.com/questions/72926989/how-to-implement-trait-futuresstreamstream was ridiculously helpful
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match self.get_mut().stream.as_mut().poll_next(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(v) => {
-                // Do what you need to do with v here.
-                Poll::Ready(v)
-            }
-        }
-    }
-}*/
-
 #[repr(C)]
 struct ScanInitData {
     //stream: *mut ResultStream,
@@ -146,16 +114,28 @@ unsafe extern "C" fn read_mysql_init(info: duckdb_init_info) {
 
 }
 
+/// # Safety
+///
+/// .
+#[no_mangle]
+unsafe extern "C" fn read_mysql_local_init(info: duckdb_init_info) {
+    let info = InitInfo::from(info);
+    let bind_info = info.bind_data::<ScanBindData>();
+
+}
+
 pub fn build_table_function_def() -> TableFunction {
     let table_function = TableFunction::new("mysql_scan");
-    let logical_type = LogicalType::new(LogicalTypeId::Varchar);
+    let varchar_type = LogicalType::new(LogicalTypeId::Varchar);
     let int_type = LogicalType::new(LogicalTypeId::Integer);
-    table_function.add_parameter(&logical_type);
-    table_function.add_parameter(&logical_type);
+    table_function.add_parameter(&varchar_type); // url
+    table_function.add_parameter(&varchar_type); // schema
+    table_function.add_parameter(&varchar_type); // table
     table_function.add_named_parameter("maxrows", &int_type);
 
     table_function.set_function(Some(read_mysql));
     table_function.set_init(Some(read_mysql_init));
+    table_function.set_local_init(Some(read_mysql_init));
     table_function.set_bind(Some(read_mysql_bind));
     table_function
 }

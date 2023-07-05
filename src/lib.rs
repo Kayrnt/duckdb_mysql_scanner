@@ -6,6 +6,8 @@ use tokio::runtime::Runtime;
 pub mod error;
 mod table_function;
 mod types;
+mod mysql;
+mod model;
 
 use crate::table_function::build_table_function_def;
 use duckdb_ext::ffi::{_duckdb_database, duckdb_library_version};

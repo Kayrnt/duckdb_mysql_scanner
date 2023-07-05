@@ -9,8 +9,7 @@ homepage = "https://github.com/Kayrnt/duckdb_mysql_scanner"
 repository = "https://github.com/Kayrnt/duckdb_mysql_scanner"
 
 [dependencies]
-#duckdb = { version = "0.8.1" }
-#libduckdb-sys = { version = "0.8.1", features = ["bundled"] }
+mysql_async = "0.32.2"
 duckdb-ext = { path = "./duckdb-ext" }
 tokio = { version = "1.23.0", features=['full'] }
 lazy_static = "1.4.0"

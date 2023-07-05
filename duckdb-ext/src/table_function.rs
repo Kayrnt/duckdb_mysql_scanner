@@ -22,7 +22,7 @@ use crate::ffi::{
     duckdb_destroy_table_function, duckdb_init_get_bind_data, duckdb_init_info,
     duckdb_init_set_error, duckdb_init_set_init_data, duckdb_table_function,
     duckdb_table_function_add_parameter, duckdb_table_function_add_named_parameter,
-    duckdb_table_function_bind_t,
+    duckdb_table_function_bind_t, duckdb_table_function_set_local_init,
     duckdb_table_function_init_t, duckdb_table_function_set_bind,
     duckdb_table_function_set_function, duckdb_table_function_set_init,
     duckdb_table_function_set_name, duckdb_table_function_supports_projection_pushdown,
@@ -226,6 +226,17 @@ impl TableFunction {
     pub fn set_init(&self, init_func: duckdb_table_function_init_t) -> &Self {
         unsafe {
             duckdb_table_function_set_init(self.ptr, init_func);
+        }
+        self
+    }
+
+    /// Sets the local init function of the table function
+    ///
+    /// # Arguments
+    ///  * `function`: The init function
+    pub fn set_local_init(&self, init_func: duckdb_table_function_init_t) -> &Self {
+        unsafe {
+            duckdb_table_function_set_local_init(self.ptr, init_func);
         }
         self
     }
