@@ -113,5 +113,9 @@ This project is licensed under the GNU General Public License (LICENSE-GPL).
 
 ## Acknowledgments
 
-- Inspired by [Postgres scanner extension](https://github.com/duckdblabs/postgres_scanner)
+- Inspired by:
+  - [Postgres scanner extension](https://github.com/duckdblabs/postgres_scanner)
+  - [Lance duckDB](https://github.com/lancedb/lance/blob/main/integration/duckdb_lance)
+  - [DuckDB extension framework](https://github.com/Mause/duckdb-extension-framework)
+
 - Rely on [DuckDB](https://github.com/duckdb/duckdb)

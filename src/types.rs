@@ -1,7 +1,7 @@
 use std::{ffi::CString, slice};
 
-use duckdb_ext::ffi::duckdb_vector_size;
-use duckdb_ext::{DataChunk, Inserter, LogicalTypeId};
+use duckdb_extension_framework::duckly::{idx_t, duckdb_vector_size};
+use duckdb_extension_framework::{DataChunk, LogicalTypeId};
 
 use crate::error::{Error, Result};
 
@@ -28,12 +28,12 @@ pub fn map_type(col_type: String) -> Result<LogicalTypeId> {
     Ok(type_id)
 }
 
-pub unsafe fn populate_column(
+/*pub unsafe fn populate_column(
     value: &str,
     col_type: LogicalTypeId,
     output: &DataChunk,
-    row_idx: usize,
-    col_idx: usize,
+    row_idx: idx_t,
+    col_idx: idx_t,
 ) {
     match col_type {
         LogicalTypeId::Varchar => set_bytes(output, row_idx, col_idx, value.as_bytes()),
@@ -51,19 +51,19 @@ pub unsafe fn populate_column(
     }
 }
 
-unsafe fn assign<T: 'static>(output: &DataChunk, row_idx: usize, col_idx: usize, v: T) {
+unsafe fn assign<T: 'static>(output: &DataChunk, row_idx: idx_t, col_idx: idx_t, v: T) {
     get_column_result_vector::<T>(output, col_idx)[row_idx] = v;
 }
 
-unsafe fn get_column_result_vector<T>(output: &DataChunk, column_index: usize) -> &'static mut [T] {
-    let result_vector = output.flat_vector(column_index);
+unsafe fn get_column_result_vector<T>(output: &DataChunk, column_index: idx_t) -> &'static mut [T] {
+    let result_vector = output.get_vector(column_index);
     // result_vector.as_mut_slice::<T>() or similar _should_ work here
     let ptr = result_vector.as_mut_ptr::<T>();
     slice::from_raw_parts_mut(ptr, duckdb_vector_size() as usize)
 }
 
-unsafe fn set_bytes(output: &DataChunk, row_idx: usize, col_idx: usize, bytes: &[u8]) {
+unsafe fn set_bytes(output: &DataChunk, row_idx: idx_t, col_idx: idx_t, bytes: &[u8]) {
     let cs = CString::new(bytes).unwrap();
-    let result_vector = &mut output.flat_vector(col_idx);
+    let result_vector = &mut output.get_vector(col_idx);
     result_vector.insert(row_idx, cs.to_str().unwrap());
-}
+}*/

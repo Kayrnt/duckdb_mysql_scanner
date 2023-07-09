@@ -47,3 +47,6 @@ mysql
 # Build
 /target
 /build
+
+# Cargo lock file
+Cargo.lock

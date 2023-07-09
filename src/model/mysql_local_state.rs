@@ -1,16 +1,16 @@
 //use duckdb::column_t;
-//use duckdb::LocalTableFunctionState;
+//use duckdb_ext::LocalTableFunctionState;
 //use duckdb::TableFilterSet;
 
-struct MysqlLocalState {
-    done: bool,
-    exec: bool,
-    base_sql: String,
-    start_page: usize,
-    current_page: usize,
-    end_page: usize,
-    pagesize: usize,
-    //column_ids: Vec<column_t>,
+pub struct MysqlLocalState {
+    pub done: bool,
+    pub exec: bool,
+    pub base_sql: String,
+    pub start_page: usize,
+    pub current_page: usize,
+    pub end_page: usize,
+    pub pagesize: usize,
+    pub column_ids: Vec<usize>,
     //filters: TableFilterSet
 }
 
@@ -31,7 +31,7 @@ impl MysqlLocalState {
             current_page: 0,
             end_page: 0,
             pagesize: 0,
-            //column_ids: Vec::new(),
+            column_ids: Vec::new(),
             //filters: TableFilterSet::new()
         }
     }

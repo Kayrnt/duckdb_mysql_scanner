@@ -23,7 +23,14 @@ ifeq ($(GEN),ninja)
 	FORCE_COLOR=-DFORCE_COLORED_OUTPUT=1
 endif
 
+MKFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
+PROJ_DIR := $(dir $(MKFILE_PATH))
+$(info $(PROJ_DIR))
+
 BUILD_FLAGS=-DEXTENSION_STATIC_BUILD=1 -DCLANG_TIDY=False ${OSX_BUILD_UNIVERSAL_FLAG} ${OSX_BUILD_AARCH64_FLAG}
+
+# These flags will make DuckDB build the extension
+EXTENSION_FLAGS=-DDUCKDB_EXTENSION_NAMES="mysql_scanner" -DDUCKDB_EXTENSION_MYSQL_SCANNER_PATH="$(PROJ_DIR)" -DDUCKDB_EXTENSION_MYSQL_SCANNER_SHOULD_LINK="FALSE" -DDUCKDB_EXTENSION_MYSQL_SCANNER_INCLUDE_PATH="$(PROJ_DIR)src/include"
 
 clean:
 	rm -rf build
@@ -32,17 +39,15 @@ clean:
 # Debug build
 build:
 	mkdir -p build/debug && \
-	cd build/debug && \
 	cmake $(GENERATOR) $(FORCE_COLOR) -DCMAKE_BUILD_TYPE=Debug ${BUILD_FLAGS} \
-		../../duckdb-ext/duckdb/CMakeLists.txt -DEXTERNAL_EXTENSION_DIRECTORIES=../../../mysql_scanner -B. && \
-	cmake --build . --config Debug -j
+	duckdb-extension-framework/duckdb/CMakeLists.txt ${EXTENSION_FLAGS} -B build/debug && \
+	cmake --build build/debug --config Debug
 
 release:
 	mkdir -p build/release && \
-	cd build/release && \
 	cmake $(GENERATOR) $(FORCE_COLOR) -DCMAKE_BUILD_TYPE=Release ${BUILD_FLAGS} \
-		../../duckdb-ext/duckdb/CMakeLists.txt -DEXTERNAL_EXTENSION_DIRECTORIES=../../../mysql_scanner -B. && \
-	cmake --build . --config Release
+	-S ./duckdb-extension-framework/duckdb/ $(EXTENSION_FLAGS) -B build/release && \
+	cmake --build build/release --config Release
 
 update:
 	git submodule update --remote --merge

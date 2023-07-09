@@ -12,37 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::ffi::CString;
+
 #[derive(Debug)]
 pub enum Error {
     DuckDB(String),
 }
 
+pub type Result<T> = std::result::Result<T, Error>;
+
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (catalog, message) = match self {
-            Self::DuckDB(s) => ("DuckDB", s.as_str()),
-        };
-        write!(f, "Lance({catalog}): {message}")
+        match self {
+            Self::DuckDB(s) => write!(f, "I/O: {s}"),
+        }
     }
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+impl Error {
+    pub fn c_str(&self) -> CString {
+        CString::new(self.to_string()).unwrap()
+    }
+}
 
 // TODO: contribute to upstream (duckdb-extension) to have a Error impl.
 impl From<Box<dyn std::error::Error>> for Error {
     fn from(value: Box<dyn std::error::Error>) -> Self {
         Self::DuckDB(value.to_string())
-    }
-}
-
-impl From<Error> for duckdb_ext::Error {
-    fn from(e: Error) -> Self {
-        Self::DuckDB(e.to_string())
-    }
-}
-
-impl From<duckdb_ext::Error> for Error {
-    fn from(e: duckdb_ext::Error) -> Self {
-        Self::DuckDB(e.to_string())
     }
 }

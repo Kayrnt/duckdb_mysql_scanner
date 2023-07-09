@@ -5,9 +5,12 @@ if (POLICY CMP0135)
     cmake_policy(SET CMP0135 NEW)
 endif ()
 
-SET(TARGET_NAME mysql_scanner)
-project(c_${TARGET_NAME} VERSION 0.1)
-set(EXTENSION_NAME mysql_scanner)
+# Set extension name here
+set(TARGET_NAME mysql_scanner)
+
+set(EXTENSION_NAME ${TARGET_NAME}_extension)
+project(${TARGET_NAME})
+set(PARAMETERS "-no-warnings")
 
 if (APPLE)
   # POLICY CMP0042
@@ -15,10 +18,6 @@ if (APPLE)
 endif()
 
 include(FetchContent)
-
-if(UNIX AND NOT APPLE)
-        find_package(OpenSSL REQUIRED)
-endif()
 
 FetchContent_Declare(
         Corrosion
@@ -31,24 +30,25 @@ set(BUILD_UNITTESTS FALSE) # Disable unit test build in duckdb
 set(OPENSSL_USE_STATIC_LIBS ON)
 find_package(OpenSSL REQUIRED)
 
+# Setup ZLIB
+find_package(ZLIB REQUIRED)
+
 FetchContent_MakeAvailable(Corrosion)
-
 corrosion_import_crate(MANIFEST_PATH ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/duckdb/src/include)
 
-set(ALL_SOURCES src/extension.c src/extension.h)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/duckdb-extension-framework/duckdb/src/include)
+include_directories(src/include)
 
-SET(EXTENSION_STATIC_BUILD 1)
-set(PARAMETERS "-no-warnings")
-build_loadable_extension(${EXTENSION_NAME} ${PARAMETERS} ${ALL_SOURCES})
+set(ALL_SOURCES src/mysql_scanner_extension.cpp)
+build_loadable_extension(${TARGET_NAME} ${PARAMETERS} ${ALL_SOURCES})
 
-set(LIB_NAME ${EXTENSION_NAME}_loadable_extension)
+set(LIB_NAME ${TARGET_NAME}_loadable_extension)
 
-set_target_properties(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(${LIB_NAME}
-        "${CMAKE_CURRENT_BINARY_DIR}/librs_duckdb_mysql.a"
-        duckdb_static
-	${OPENSSL_LIBRARIES}
+                      "${CMAKE_CURRENT_BINARY_DIR}/librs_duckdb_mysql_scanner.a"
+                      ZLIB::ZLIB
+                      duckdb_static
+	                    ${OPENSSL_LIBRARIES}
 )
 
 if (APPLE)
