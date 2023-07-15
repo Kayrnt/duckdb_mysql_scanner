@@ -1,15 +1,20 @@
+use std::cell::RefCell;
 use std::ffi::{c_char, c_void, CString};
-use duckdb_extension_framework::duckly::{duckdb_bind_info, duckdb_free};
-use duckdb_extension_framework::malloc_struct;
+use std::sync::{Arc, Mutex};
+use duckdb_extension_framework::duckly::{duckdb_bind_info, duckdb_free, duckdb_type};
+use duckdb_extension_framework::{LogicalType, LogicalTypeId, malloc_struct};
 use duckdb_extension_framework::table_functions::BindInfo;
-use mysql::Pool;
-use mysql::prelude::Queryable;
+use futures::StreamExt;
+use mysql::{Pool, params, prelude::Queryable};
+use mysql::prelude::FromRow;
+use crate::model::duckdb_type::duckdb_type;
 use crate::model::extension_global_state::get_connection_pool_for_url;
 
 #[repr(C)]
 pub struct MysqlScanBindData {
-    schema: *mut c_char,
-    table: *mut c_char,
+    pub url: *mut c_char,
+    pub schema: *mut c_char,
+    pub table: *mut c_char,
 }
 
 const DEFAULT_LIMIT: i32 = 10000;
@@ -42,22 +47,13 @@ pub unsafe extern "C" fn read_mysql_bind(bind_info: duckdb_bind_info) {
     let table = table_var.to_str().unwrap();
     //let maxrows = bind_info.named_parameter("maxrows");
 
-    //create the connection pool to mysql using URL
-    let pool = get_connection_pool_for_url(&url);
-
-    let mut connection = pool.lock().unwrap().borrow().get_conn().unwrap();
-
-    let query = format!("SELECT COUNT(*) FROM {}.{}", schema, table);
-    let count_rows: Option<u64> = connection.query_first(query).unwrap();
-
-    // print the result
-    println!("Count: {}", count_rows.unwrap());
-
     // Create the bind data
     let my_bind_data = malloc_struct::<MysqlScanBindData>();
+    (*my_bind_data).url = CString::new(url).expect("MySQL url").into_raw();
     (*my_bind_data).schema = CString::new(schema).expect("Schema name").into_raw();
     (*my_bind_data).table = CString::new(table).expect("Table name").into_raw();
 
     // Set the bind data
     bind_info.set_bind_data(my_bind_data.cast(), Some(drop_scan_bind_data_c));
 }
+

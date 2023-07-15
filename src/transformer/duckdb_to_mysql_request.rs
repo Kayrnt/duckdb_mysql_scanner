@@ -1,7 +1,3 @@
-use duckdb_extension_framework::table_functions::BindInfo;
-use crate::function::mysql_scan::mysql_scan_bind::MysqlScanBindData;
-use crate::model::mysql_local_state::MysqlLocalState;
-// use duckdb_ext::ExpressionType;
 
 /*fn transform_filter(column_name: &str, filter: &TableFilter) -> String {
     // Implementation of TransformFilter goes here
@@ -53,33 +49,5 @@ fn transform_filter(column_name: &str, filter: &TableFilter) -> String {
         }
         _ => panic!("Unsupported table filter type"),
     }
-}*/
-
-/*fn duckdb_to_mysql_request(bind_data_p: *const MysqlScanBindData, lstate: &mut MysqlLocalState) -> String {
-    assert!(!bind_data_p.is_null());
-    let bind_data: &MysqlScanBindData = unsafe { &*bind_data_p };
-
-    let col_names = String::new();
-    /*let col_names = lstate.column_ids.iter().map(|&column_id| {
-        let name = bind_data.names[column_id].to_owned();
-        let needs_cast = bind_data.needs_cast[column_id];
-        format!("`{}`{}", name, if needs_cast { "::VARCHAR" } else { "" })
-    }).collect::<Vec<_>>().join(", ");*/
-
-    let mut filter_string = String::new();
-    /*if let Some(filters) = &lstate.filters {
-        if !filters.filters.is_empty() {
-            let filter_entries = filters.filters.iter().map(|(column_id, filter)| {
-                let column_name = format!("`{}`", bind_data.names[lstate.column_ids[*column_id]]);
-                transform_filter(&column_name, filter)
-            }).collect::<Vec<_>>();
-            filter_string = format!(" WHERE {}", filter_entries.join(" AND "));
-        }
-    }*/
-
-    format!(
-        "SELECT {} FROM `{}`.`{}` {}",
-        col_names, bind_data.schema_name, bind_data.table_name, filter_string
-    )
 }*/
 
