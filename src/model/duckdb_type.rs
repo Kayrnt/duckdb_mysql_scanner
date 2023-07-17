@@ -1,8 +1,9 @@
 use std::ffi::CString;
 use std::slice;
+use duckdb_extension_framework::vector::Inserter;
 use duckdb_extension_framework::{DataChunk, LogicalType, LogicalTypeId};
-use duckdb_extension_framework::duckly::duckdb_vector_size;
-use crate::function::mysql_scan::mysql_scan_global_init::{MysqlColumnInfo, MysqlTypeInfo};
+use duckdb_extension_framework::duckly::{duckdb_vector_size};
+use crate::function::mysql_scan::mysql_scan_bind::{MysqlColumnInfo, MysqlTypeInfo};
 
 fn duckdb_type_2(type_info: &MysqlTypeInfo) -> LogicalType {
     let mysql_type_name = &type_info.name;
@@ -82,7 +83,6 @@ unsafe fn assign<T: 'static>(output: &DataChunk, row_idx: usize, col_idx: usize,
 
 unsafe fn get_column_result_vector<T>(output: &DataChunk, column_index: usize) -> &'static mut [T] {
     let result_vector = output.flat_vector(column_index);
-    // result_vector.as_mut_slice::<T>() or similar _should_ work here
     let ptr = result_vector.as_mut_ptr::<T>();
     slice::from_raw_parts_mut(ptr, duckdb_vector_size() as usize)
 }

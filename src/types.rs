@@ -1,7 +1,5 @@
-use std::{ffi::CString, slice};
 
-use duckdb_extension_framework::duckly::{idx_t, duckdb_vector_size};
-use duckdb_extension_framework::{DataChunk, LogicalTypeId};
+use duckdb_extension_framework::LogicalTypeId;
 
 use crate::error::{Error, Result};
 
