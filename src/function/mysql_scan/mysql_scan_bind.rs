@@ -7,7 +7,7 @@ use duckdb_extension_framework::table_functions::BindInfo;
 use futures::executor::block_on;
 use sqlx::{MySql, Pool, Row};
 use sqlx::mysql::MySqlRow;
-use crate::model::duckdb_type::duckdb_type;
+use crate::model::duckdb_type::info_to_duckdb_type;
 use crate::model::extension_global_state::{get_connection_pool_for_url, insert_mysql_table_type_infos_for_schema_table};
 
 #[repr(C)]
@@ -75,7 +75,7 @@ pub struct MysqlColumnInfo {
 #[derive(Debug, Clone)]
 pub struct MysqlTypeInfo {
     pub name: String,
-    pub char_max_length: Option<i32>,
+    pub char_max_length: Option<i64>,
     pub numeric_precision: Option<u8>,
     pub numeric_scale: Option<u8>,
     pub enum_values: Option<String>,
@@ -85,12 +85,12 @@ pub struct MysqlTypeInfo {
 ///
 /// # Safety
 unsafe extern "C" fn drop_scan_bind_data_c(v: *mut c_void) {
-    let actual = v.cast::<MysqlScanBindData>();
-    println!("Dropping ScanBindData: {:?}", actual);
-    drop(CString::from_raw((*actual).schema.cast()));
-    drop(CString::from_raw((*actual).table.cast()));
-    drop(CString::from_raw((*actual).url.cast()));
-    println!("Dropped ScanBindData: {:?}", actual);
+    //let actual = v.cast::<MysqlScanBindData>();
+    //println!("Dropping ScanBindData: {:?}", actual);
+    // drop(CString::from_raw((*actual).schema.cast()));
+    // drop(CString::from_raw((*actual).table.cast()));
+    // drop(CString::from_raw((*actual).url.cast()));
+    //println!("Dropped ScanBindData: {:?}", actual);
     duckdb_free(v);
 }
 
@@ -121,24 +121,24 @@ pub unsafe extern "C" fn read_mysql_bind(bind_info: duckdb_bind_info) {
     block_on(async {
         //create the connection pool to mysql using URL
         let pool: Arc<Mutex<RefCell<Pool<MySql>>>> = get_connection_pool_for_url(&url).await;
-
+        //println!("Retrieve column infos...");
         match get_table_types_infos(pool,
                                     &bind_info,
                                     schema,
                                     table,
         ).await {
             Ok(table_type_infos) => {
-                println!("Column infos: {:?}", table_type_infos);
+                //println!("Column infos: {:?}", table_type_infos);
                 //(*my_bind_data).mysql_type_infos = *table_type_infos;
                 insert_mysql_table_type_infos_for_schema_table(schema, table, table_type_infos);
-                println!("Malloc'ed column infos");
+                //println!("Malloc'ed column infos");
             }
             Err(err) => {
                 println!("Couldn't retrieve column infos for table {}.{}: {}", schema, table, err);
             }
         };
 
-        println!("Bind data: {:?}", my_bind_data);
+        //println!("Bind data: {:?}", my_bind_data);
         // Set the bind data
         bind_info.set_bind_data(my_bind_data.cast(), Some(drop_scan_bind_data_c));
     });
@@ -174,7 +174,7 @@ async fn get_table_types_infos(
         .map(|row: MySqlRow| {
             let column_name: String = row.get(0);
             let data_type: String = row.get(1);
-            let char_max_length: Option<i32> = row.get(2);
+            let char_max_length: Option<i64> = row.get(2);
             let numeric_precision: Option<u8> = row.get(3);
             let numeric_scale: Option<u8> = row.get(4);
             let enum_values: Option<String> = row.get(5);
@@ -202,7 +202,7 @@ async fn get_table_types_infos(
     for info in infos {
         names.push(info.column_name.clone());
 
-        let duckdb_type = duckdb_type(&info);
+        let duckdb_type = info_to_duckdb_type(&info);
 
         let col_needs_cast = duckdb_type.type_id() == LogicalTypeId::Invalid;
         if col_needs_cast {

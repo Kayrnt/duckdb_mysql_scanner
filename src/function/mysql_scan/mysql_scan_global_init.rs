@@ -11,7 +11,7 @@ use sqlx::mysql::MySqlRow;
 
 #[repr(C)]
 pub struct MysqlScanGlobalInitData {
-    pub scan_done: bool,
+    pub done: bool,
     pub current_thread_start_page: u32,
     pub max_threads: u32,
     pub base_sql: *mut c_char,
@@ -96,11 +96,11 @@ pub unsafe extern "C" fn read_mysql_init(info: duckdb_init_info) {
     let sql_str = duckdb_to_mysql_request(
         schema, table, &column_ids,
     );
-    println!("SQL: {}", sql_str);
+    //println!("SQL: {}", sql_str);
     let base_sql = CString::new(sql_str).expect("CString::new failed").into_raw();
 
     let mut my_global_init_data = malloc_struct::<MysqlScanGlobalInitData>();
-    (*my_global_init_data).scan_done = false;
+    (*my_global_init_data).done = false;
     (*my_global_init_data).current_thread_start_page = 0;
     (*my_global_init_data).max_threads = 1;
     (*my_global_init_data).base_sql = base_sql;
@@ -108,19 +108,20 @@ pub unsafe extern "C" fn read_mysql_init(info: duckdb_init_info) {
 
     //create the connection pool to mysql using URL
     block_on(async {
-        let pool = get_connection_pool_for_url(url).await;
+        // let pool = get_connection_pool_for_url(url).await;
 
-        let query = format!("SELECT COUNT(*) FROM {}.{}", schema, table);
-        let count_rows: i64 = sqlx::query(query.as_str())
-            .map(|row: MySqlRow| {
-                let count: i64 = row.get(0);
-                count
-                // map the row into a user-defined domain type
-            })
-            .fetch_one(&*(pool.lock().unwrap().borrow())).await.unwrap();
+        // let query = format!("SELECT COUNT(*) FROM {}.{}", schema, table);
+        // println!("Query: {}", query);
+        // let count_rows: i64 = sqlx::query(query.as_str())
+        //     .map(|row: MySqlRow| {
+        //         let count: Option<i64> = row.try_get(0).unwrap();
+        //         count.expect("Counted but no count returned")
+        //         // map the row into a user-defined domain type
+        //     })
+        //     .fetch_one(&*(pool.lock().unwrap().borrow())).await.unwrap();
 
         // print the result
-        println!("Count: {}", count_rows);
+        // println!("Count: {}", count_rows);
 
         global_init_data.set_init_data(my_global_init_data.cast(), Some(drop_scan_global_init_data));
     });

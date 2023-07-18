@@ -12,12 +12,13 @@ use crate::model::extension_global_state::get_connection_pool_for_url;
 #[repr(C)]
 pub struct MysqlScanLocalInitData {
     pub results: *mut c_void,
+    pub current_idx_in_results: usize,
 
     pub start_page: usize,
     pub current_page: usize,
     pub end_page: usize,
 
-    pub batch_done: bool,
+    pub done: bool,
     pub local_state_initialized: bool,
 }
 
@@ -35,8 +36,8 @@ impl MysqlScanLocalInitData {
 ///
 /// # Safety
 unsafe extern "C" fn drop_scan_local_init_data(v: *mut c_void) {
-    let actual = v.cast::<MysqlScanLocalInitData>();
-    let boxed_data = unsafe { Box::from_raw((*actual).results as *mut Vec<MySqlRow>) };
+    //let actual = v.cast::<MysqlScanLocalInitData>();
+    //let _boxed_data = unsafe { Box::from_raw((*actual).results as *mut Vec<MySqlRow>) };
     duckdb_free(v);
 }
 
@@ -48,16 +49,16 @@ pub unsafe extern "C" fn read_mysql_local_init(info: duckdb_init_info) {
     let info = InitInfo::from(info);
     let bind_data_p = info.get_bind_data::<MysqlScanBindData>();
 
-
     //malloc MysqlScanLocalInitData for duckDB
     let mut my_local_init_data = malloc_struct::<MysqlScanLocalInitData>();
     //TODO update the value on first scan read based on the global state to update those values
+    (*my_local_init_data).current_idx_in_results = 0;
     (*my_local_init_data).start_page = 0;
     (*my_local_init_data).current_page = 0;
     (*my_local_init_data).end_page = 1000;
     //my_local_init_data.pagesize = STANDARD_VECTOR_SIZE;
 
-    (*my_local_init_data).batch_done = false;
+    (*my_local_init_data).done = false;
     (*my_local_init_data).local_state_initialized = false;
 
     info.set_init_data(my_local_init_data.cast(), Some(drop_scan_local_init_data));
