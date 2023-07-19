@@ -9,10 +9,11 @@ homepage = "https://github.com/Kayrnt/duckdb_mysql_scanner"
 repository = "https://github.com/Kayrnt/duckdb_mysql_scanner"
 
 [dependencies]
-sqlx = { version = "0.7", features = [ "runtime-async-std", "tls-native-tls", "mysql" ] }
+sqlx = { version = "0.7.1", features = [ "runtime-async-std", "tls-native-tls", "mysql", "chrono", "bigdecimal" ] }
 duckdb-extension-framework = { path = "./duckdb-extension-framework" }
 lazy_static = "1.4.0"
 futures = "0.3"
+chrono = "0.4.26"
 
 [lib]
 name = "rs_duckdb_mysql_scanner"

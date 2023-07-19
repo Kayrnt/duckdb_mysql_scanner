@@ -4,9 +4,7 @@ use std::ffi::{c_char, c_void, CString};
 use duckdb_extension_framework::malloc_struct;
 use futures::executor::block_on;
 use crate::function::mysql_scan::mysql_scan_bind::MysqlScanBindData;
-use crate::model::extension_global_state::{get_connection_pool_for_url, get_mysql_table_type_infos_for_schema_table};
-use sqlx::Row;
-use sqlx::mysql::MySqlRow;
+use crate::model::extension_global_state::get_mysql_table_type_infos_for_schema_table;
 
 
 #[repr(C)]
@@ -27,7 +25,7 @@ impl MysqlScanGlobalInitData {
 ///
 /// # Safety
 unsafe extern "C" fn drop_scan_global_init_data(v: *mut c_void) {
-    let actual = v.cast::<MysqlScanGlobalInitData>();
+    // let actual = v.cast::<MysqlScanGlobalInitData>();
     /*println!("Dropping ScanBindData: {:?}", actual);
     drop(CString::from_raw((*actual).schema.cast()));
     drop(CString::from_raw((*actual).table.cast()));

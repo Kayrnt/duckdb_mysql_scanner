@@ -6,21 +6,44 @@ The mysql_scanner extension allows DuckDB to directly read data from a running M
 
 ## Usage
 
+First load the extension:
+
+```SQL
+LOAD 'mysql_scanner.duckdb_extension';
+```
+
+
 ### Attach a single table (:white_check_mark: working)
 
 If you prefer to not attach all tables, but just query a single table, that is possible using the `MYSQL_SCAN` table-producing function, e.g.
 
 ```SQL
-SELECT * FROM MYSQL_SCAN('', 'public', 'mytable');
+SELECT * FROM MYSQL_SCAN('mysql://user:password@host:port/database', 'public', 'mytable');
 ```
 
-`MYSQL_SCAN` takes 5 string parameters:
+`MYSQL_SCAN` takes 3 string parameters:
 
-- the host (ip or name)
-- the user name
-- the password for that user
-- the schema name in MySQL
+- MySQL url string (i.e. `mysql://user:password@host:port/database`, some parameters can be omitted)
+- the schema name in MySQL (ie the database name)
 - the table name in MySQL
+
+### Attach a MySQL database (:warning: :red_circle: not yet working)
+
+To make a MYSQL database accessible to DuckDB, use the `MYSQL_ATTACH` command:
+
+```SQL
+CALL MYSQL_ATTACH('mysql://user:password@host:port/database');
+```
+
+`MYSQL_ATTACH` takes a one required string parameter:
+- MySQL url string (i.e. `mysql://user:password@host:port/database`, some parameters can be omitted)
+
+There are few additional named parameters:
+
+- `source_schema` the name of a non-standard schema name in Postgres to get tables from. Default is `public`.
+- `sink_schema` the schema name in DuckDB to create views. Default is `main`.
+- `overwrite` whether we should overwrite existing views in the target schema, default is `false`.
+- `filter_pushdown` whether filter predicates that DuckDB derives from the query should be forwarded to MySQL, defaults to `true`.
 
 #### `sink_schema` usage
 
@@ -32,33 +55,6 @@ CREATE SCHEMA abc;
 CALL mysql_attach('localhost', 'root', '', source_schema='information_schema', sink_schema='abc');
 SELECT table_schema,table_name,table_type FROM tables;
 ```
-
-### Attach a MySQL database (:warning: :red_circle: not yet working)
-
-First load the extension:
-
-```SQL
-LOAD 'mysql_scanner.duckdb_extension';
-```
-
-To make a MYSQL database accessible to DuckDB, use the `MYSQL_ATTACH` command:
-
-```SQL
-CALL MYSQL_ATTACH('127.0.0.1', 'username', 'password');
-```
-
-`MYSQL_ATTACH` takes a three required string parameters:
-
-- the host (ip or name)
-- the user name
-- the password for that user
-
-There are few additional named parameters:
-
-- `source_schema` the name of a non-standard schema name in Postgres to get tables from. Default is `public`.
-- `sink_schema` the schema name in DuckDB to create views. Default is `main`.
-- `overwrite` whether we should overwrite existing views in the target schema, default is `false`.
-- `filter_pushdown` whether filter predicates that DuckDB derives from the query should be forwarded to MySQL, defaults to `true`.
 
 The tables in the database are registered as views in DuckDB, you can list them with
 

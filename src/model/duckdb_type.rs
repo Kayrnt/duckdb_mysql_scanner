@@ -3,10 +3,12 @@ use std::ffi::CString;
 use std::slice;
 use duckdb_extension_framework::vector::Inserter;
 use duckdb_extension_framework::{DataChunk, LogicalType, LogicalTypeId};
-use duckdb_extension_framework::duckly::{duckdb_vector_size, idx_t};
+use duckdb_extension_framework::duckly::{duckdb_date, duckdb_date_struct, duckdb_time, duckdb_time_struct, duckdb_timestamp, duckdb_vector_size, idx_t};
 use sqlx::mysql::{MySqlRow, MySqlValueRef};
 use sqlx::{Error, Row};
-use sqlx::error::UnexpectedNullError;
+use sqlx::types::chrono::{DateTime, Utc};
+use chrono::prelude::*;
+use chrono::Duration;
 use crate::function::mysql_scan::mysql_scan_bind::{MysqlColumnInfo, MysqlTypeInfo};
 
 fn duckdb_type_2(type_info: &MysqlTypeInfo) -> LogicalType {
@@ -25,11 +27,11 @@ fn duckdb_type_2(type_info: &MysqlTypeInfo) -> LogicalType {
         return LogicalTypeId::Enum;
     }*/
 
-    /*if mysql_type_name == "decimal" {
+    if mysql_type_name == "decimal" {
         return
             LogicalType::new_decimal_type(type_info.numeric_precision.unwrap(),
                                           type_info.numeric_scale.unwrap());
-    }*/
+    }
 
     let logical_type_id = match mysql_type_name.as_str() {
         //"enum" => LogicalTypeId::Enum,
@@ -51,7 +53,7 @@ fn duckdb_type_2(type_info: &MysqlTypeInfo) -> LogicalType {
         _ => {
             println!("unknown type: {:?}", mysql_type_name);
             LogicalTypeId::Invalid
-        },
+        }
     };
 
     return LogicalType::new(logical_type_id);
@@ -70,59 +72,132 @@ pub unsafe fn populate_column(
 ) {
     //println!("col_type: {:?} for col_idx {:?}", col_type, col_idx);
     match col_type {
-        "VARCHAR" | "TEXT" | "CHAR" => {
+        "VARCHAR" | "TEXT" | "CHAR" | "ENUM" => {
             let val: Option<String> = row.try_get(col_idx).unwrap();
             val.map(|val| {
                 set_bytes(output, row_idx, col_idx, val.as_bytes());
-            }).or_else(||{
+            }).or_else(|| {
                 set_invalid(output, row_idx, col_idx)
             });
-        },
+        }
         "TINYINT" => {
             let val: Option<i8> = row.try_get(col_idx).unwrap();
             val.map(|val| {
                 assign(output, row_idx, col_idx, val);
-            }).or_else(||{
+            }).or_else(|| {
                 set_invalid(output, row_idx, col_idx)
             });
-        },
+        }
+        "SMALLINT" => {
+            let val: Option<i16> = row.try_get(col_idx).unwrap();
+            val.map(|val| {
+                assign(output, row_idx, col_idx, val);
+            }).or_else(|| {
+                set_invalid(output, row_idx, col_idx)
+            });
+        }
         "INT" => {
             let val: Option<i32> = row.try_get(col_idx).unwrap();
             val.map(|val| {
                 assign(output, row_idx, col_idx, val);
-            }).or_else(||{
+            }).or_else(|| {
                 set_invalid(output, row_idx, col_idx)
             });
-        },
+        }
         "BIGINT" => {
             let val: Option<i64> = row.try_get(col_idx).unwrap();
             val.map(|val| {
                 assign(output, row_idx, col_idx, val);
-            }).or_else(||{
+            }).or_else(|| {
                 set_invalid(output, row_idx, col_idx)
             });
-        },
+        }
         "TINYINT UNSIGNED" => {
             let val: Option<u8> = row.try_get(col_idx).unwrap();
             val.map(|val| {
                 assign(output, row_idx, col_idx, val);
-            }).or_else(||{
+            }).or_else(|| {
                 set_invalid(output, row_idx, col_idx)
             });
-        },
+        }
         "INT UNSIGNED" => {
             let val: Option<u32> = row.try_get(col_idx).unwrap();
             val.map(|val| {
                 assign(output, row_idx, col_idx, val);
-            }).or_else(||{
+            }).or_else(|| {
                 set_invalid(output, row_idx, col_idx)
             });
-        },
+        }
+        "SMALLINT UNSIGNED" => {
+            let val: Option<u16> = row.try_get(col_idx).unwrap();
+            val.map(|val| {
+                assign(output, row_idx, col_idx, val);
+            }).or_else(|| {
+                set_invalid(output, row_idx, col_idx)
+            });
+        }
         "BIGINT UNSIGNED" => {
             let val: Option<u64> = row.try_get(col_idx).unwrap();
             val.map(|val| {
                 assign(output, row_idx, col_idx, val);
-            }).or_else(||{
+            }).or_else(|| {
+                set_invalid(output, row_idx, col_idx)
+            });
+        }
+        "FLOAT" => {
+            let val: Option<f32> = row.try_get(col_idx).unwrap();
+            val.map(|val| {
+                assign(output, row_idx, col_idx, val);
+            }).or_else(|| {
+                set_invalid(output, row_idx, col_idx)
+            });
+        }
+        "DOUBLE" => {
+            let val: Option<f64> = row.try_get(col_idx).unwrap();
+            val.map(|val| {
+                assign(output, row_idx, col_idx, val);
+            }).or_else(|| {
+                set_invalid(output, row_idx, col_idx)
+            });
+        }
+        "BOOLEAN" | "TINYINT(1)" => {
+            let val: Option<bool> = row.try_get(col_idx).unwrap();
+            val.map(|val| {
+                assign(output, row_idx, col_idx, val);
+            }).or_else(|| {
+                set_invalid(output, row_idx, col_idx)
+            });
+        }
+        "TIMESTAMP" => {
+            let val: Option<DateTime<Utc>> = row.try_get(col_idx).unwrap();
+            val.map(|val| {
+                let ts = duckdb_timestamp {
+                    micros: val.timestamp_micros(),
+                };
+                assign(output, row_idx, col_idx, ts);
+            }).or_else(|| {
+                set_invalid(output, row_idx, col_idx)
+            });
+        },
+        "DATE" => {
+            let val: Option<NaiveDate> = row.try_get(col_idx).unwrap();
+            val.map(|val| {
+                let ts = duckdb_date {
+                    days: val.num_days_from_ce(),
+                };
+                assign(output, row_idx, col_idx, ts);
+            }).or_else(|| {
+                set_invalid(output, row_idx, col_idx)
+            });
+        },
+        "TIME" => {
+            let val: Option<NaiveTime> = row.try_get(col_idx).unwrap();
+            val.map(|val| {
+                let ts = duckdb_time {
+                    micros: val.num_seconds_from_midnight() as i64,
+                };
+                assign(output, row_idx, col_idx, ts);
+            }).or_else(|| {
                 set_invalid(output, row_idx, col_idx)
             });
         },
