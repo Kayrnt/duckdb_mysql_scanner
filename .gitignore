@@ -43,3 +43,13 @@ build
 
 # Dependencies
 mysql
+
+# Build
+/target
+/build
+
+# Cargo lock file
+Cargo.lock
+
+# DuckDB as it's a submodule
+duckdb-extension-framework/duckdb
