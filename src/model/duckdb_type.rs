@@ -1,14 +1,14 @@
-use std::any::Any;
 use std::ffi::CString;
 use std::slice;
 use duckdb_extension_framework::vector::Inserter;
 use duckdb_extension_framework::{DataChunk, LogicalType, LogicalTypeId};
-use duckdb_extension_framework::duckly::{duckdb_date, duckdb_date_struct, duckdb_time, duckdb_time_struct, duckdb_timestamp, duckdb_vector_size, idx_t};
-use sqlx::mysql::{MySqlRow, MySqlValueRef};
-use sqlx::{Error, Row};
+use duckdb_extension_framework::duckly::{duckdb_date, duckdb_decimal, duckdb_double_to_decimal, duckdb_time, duckdb_timestamp, duckdb_vector_size, idx_t};
+use sqlx::mysql::MySqlRow;
+use sqlx::{Row, types};
 use sqlx::types::chrono::{DateTime, Utc};
 use chrono::prelude::*;
-use chrono::Duration;
+use bigdecimal::{BigDecimal, ToPrimitive};
+use types::BigDecimal as SqlxBigDecimal;
 use crate::function::mysql_scan::mysql_scan_bind::{MysqlColumnInfo, MysqlTypeInfo};
 
 fn duckdb_type_2(type_info: &MysqlTypeInfo) -> LogicalType {
@@ -27,22 +27,23 @@ fn duckdb_type_2(type_info: &MysqlTypeInfo) -> LogicalType {
         return LogicalTypeId::Enum;
     }*/
 
-    if mysql_type_name == "decimal" {
+    /*if mysql_type_name.as_str() == "decimal" {
         return
             LogicalType::new_decimal_type(type_info.numeric_precision.unwrap(),
                                           type_info.numeric_scale.unwrap());
-    }
+    }*/
 
     let logical_type_id = match mysql_type_name.as_str() {
-        //"enum" => LogicalTypeId::Enum,
         "bit" => LogicalTypeId::Bit,
         "tinyint" => LogicalTypeId::Tinyint,
         "smallint" => LogicalTypeId::Smallint,
         "int" => LogicalTypeId::Integer,
         "bigint" => LogicalTypeId::Bigint,
         "float" => LogicalTypeId::Float,
-        "double" => LogicalTypeId::Double,
+        //TODO native implementation for decimal
+        "decimal" | "double" => LogicalTypeId::Double,
         //TODO native implementation for enum
+        //"enum" => LogicalTypeId::Enum,
         "enum" | "char" | "bpchar" | "varchar" | "text" | "longtext" | "jsonb" | "json" => LogicalTypeId::Varchar,
         "date" => LogicalTypeId::Date,
         "bytea" => LogicalTypeId::Blob,
@@ -178,7 +179,7 @@ pub unsafe fn populate_column(
             }).or_else(|| {
                 set_invalid(output, row_idx, col_idx)
             });
-        },
+        }
         "DATE" => {
             let val: Option<NaiveDate> = row.try_get(col_idx).unwrap();
             val.map(|val| {
@@ -189,7 +190,7 @@ pub unsafe fn populate_column(
             }).or_else(|| {
                 set_invalid(output, row_idx, col_idx)
             });
-        },
+        }
         "TIME" => {
             let val: Option<NaiveTime> = row.try_get(col_idx).unwrap();
             val.map(|val| {
@@ -201,6 +202,18 @@ pub unsafe fn populate_column(
                 set_invalid(output, row_idx, col_idx)
             });
         },
+        //TODO fix as not working as intended
+        "DECIMAL" => {
+            let val: Option<SqlxBigDecimal> = row.try_get(col_idx).unwrap();
+            val.map(|val| {
+                let scale = val.as_bigint_and_exponent().1;
+                let decimal =
+                    duckdb_double_to_decimal(val.to_f64().unwrap(), 18, scale as u8);
+                assign(output, row_idx, col_idx, decimal);
+            }).or_else(|| {
+                set_invalid(output, row_idx, col_idx)
+            });
+        }
         _ => {
             println!("Unsupported data type: {:?}", col_type);
         }

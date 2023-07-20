@@ -14,6 +14,7 @@ duckdb-extension-framework = { path = "./duckdb-extension-framework" }
 lazy_static = "1.4.0"
 futures = "0.3"
 chrono = "0.4.26"
+bigdecimal = "0.4.1"
 
 [lib]
 name = "rs_duckdb_mysql_scanner"

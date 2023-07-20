@@ -2,7 +2,6 @@
 use std::ffi::{c_char, c_void};
 
 pub mod error;
-mod types;
 mod model;
 mod transformer;
 mod function;
