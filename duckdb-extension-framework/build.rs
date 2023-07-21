@@ -25,7 +25,8 @@ fn main() {
     // to bindgen, and lets you build up options for
     // the resulting bindings.
     let duckdb_include = duckdb_root.join("src/include");
-    let bindings = bindgen::Builder::default()
+    let bindings = bindgen::Builder::formatter(bindgen::Builder::default(),
+                                               bindgen::Formatter::Prettyplease)
         .header(header)
         .clang_arg("-xc++")
         .clang_arg("-I")
