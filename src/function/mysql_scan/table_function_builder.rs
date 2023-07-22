@@ -20,5 +20,6 @@ pub fn build_table_function_def() -> TableFunction {
     table_function.set_local_init(Some(read_mysql_local_init));
     table_function.set_bind(Some(read_mysql_bind));
     table_function.supports_pushdown(true);
+    table_function.supports_filter_pushdown(true);
     table_function
 }

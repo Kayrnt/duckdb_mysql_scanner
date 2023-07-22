@@ -4,7 +4,9 @@ use crate::duckly::{
     duckdb_table_function_set_bind, duckdb_table_function_set_extra_info,
     duckdb_table_function_set_function, duckdb_table_function_set_init,
     duckdb_table_function_set_local_init, duckdb_table_function_set_name,
-    duckdb_table_function_supports_projection_pushdown, duckdb_function_info,
+    duckdb_table_function_supports_projection_pushdown,
+    duckdb_table_function_supports_filter_pushdown,
+    duckdb_function_info,
     duckdb_data_chunk,
 };
 use crate::logical_type::LogicalType;
@@ -38,6 +40,13 @@ impl TableFunction {
     pub fn supports_pushdown(&self, supports: bool) -> &Self {
         unsafe {
             duckdb_table_function_supports_projection_pushdown(self.ptr, supports);
+        }
+        self
+    }
+
+    pub fn supports_filter_pushdown(&self, supports: bool) -> &Self {
+        unsafe {
+            duckdb_table_function_supports_filter_pushdown(self.ptr, supports);
         }
         self
     }
