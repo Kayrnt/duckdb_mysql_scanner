@@ -31,17 +31,17 @@ fn transform_comparison(expr_type: ExpressionType) -> String {
 
 fn transform_filter(column_name: &str, filter: &TableFilter) -> String {
     match filter.filter_type {
-        TableFilterType::IS_NULL => format!("{} IS NULL", column_name),
-        TableFilterType::IS_NOT_NULL => format!("{} IS NOT NULL", column_name),
-        TableFilterType::CONJUNCTION_AND => {
+        TableFilterType::IsNull => format!("{} IS NULL", column_name),
+        TableFilterType::IsNotNull => format!("{} IS NOT NULL", column_name),
+        TableFilterType::ConjunctionAnd => {
             let conjunction_filter = filter.as_any().downcast_ref::<ConjunctionAndFilter>().unwrap();
             create_expression(column_name, &conjunction_filter.child_filters, "AND")
         }
-        TableFilterType::CONJUNCTION_OR => {
+        TableFilterType::ConjunctionOr => {
             let conjunction_filter = filter.as_any().downcast_ref::<ConjunctionOrFilter>().unwrap();
             create_expression(column_name, &conjunction_filter.child_filters, "OR")
         }
-        TableFilterType::CONSTANT_COMPARISON => {
+        TableFilterType::ConstantComparison => {
             let constant_filter = filter.as_any().downcast_ref::<ConstantFilter>().unwrap();
             let constant_string = format!("'{}'", constant_filter.constant.to_string());
             let operator_string = transform_comparison(constant_filter.comparison_type);

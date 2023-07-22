@@ -1,4 +1,4 @@
-use duckdb_extension_framework::duckly::{duckdb_free, duckdb_init_info, idx_t};
+use duckdb_extension_framework::duckly::{_duckdb_table_filter_set, duckdb_free, duckdb_init_info, idx_t};
 use duckdb_extension_framework::table_functions::InitInfo;
 use std::ffi::{c_char, c_void, CString};
 use duckdb_extension_framework::malloc_struct;
@@ -6,6 +6,42 @@ use futures::executor::block_on;
 use crate::function::mysql_scan::mysql_scan_bind::MysqlScanBindData;
 use crate::model::extension_global_state::get_mysql_table_type_infos_for_schema_table;
 
+
+#[repr(C)]
+pub enum CTableFilterType {
+    ConstantComparison = 0,
+    IsNull = 1,
+    IsNotNull = 2,
+    ConjunctionOr = 3,
+    ConjunctionAnd = 4,
+}
+
+#[repr(C)]
+pub struct CTableFilter {
+    filter_type: CTableFilterType,
+}
+
+#[repr(C)]
+pub struct CTableFilterSet {
+    filters: *mut *mut CTableFilter,
+    size: usize,
+    capacity: usize,
+}
+
+/*#[repr(C)]
+pub struct duckdb_table_filter_set {
+    __tfs: *const c_void,
+}*/
+
+struct ConstantFilter {
+    comparison_type: CTableFilterType,
+    constant: CString,
+}
+
+struct ConjunctionFilter {
+    filter_type: CTableFilterType,
+    child_filters: Vec<*mut CTableFilter>,
+}
 
 #[repr(C)]
 pub struct MysqlScanGlobalInitData {
@@ -34,10 +70,81 @@ unsafe extern "C" fn drop_scan_global_init_data(v: *mut c_void) {
     duckdb_free(v);
 }
 
+// Rust version of NotImplementedException
+#[derive(Debug)]
+pub struct NotImplementedException;
+
+impl From<NotImplementedException> for InternalException {
+    fn from(_: NotImplementedException) -> Self {
+        InternalException
+    }
+}
+
+// Rust version of InternalException
+#[derive(Debug)]
+pub struct InternalException;
+
+// Rust version of TransformComparision
+fn transform_comparison(type_enum: &CTableFilterType) -> Result<&str, NotImplementedException> {
+    match type_enum {
+        CTableFilterType::ConstantComparison => Ok("="),
+        CTableFilterType::IsNull => Ok("IS NULL"),
+        CTableFilterType::IsNotNull => Ok("IS NOT NULL"),
+        CTableFilterType::ConjunctionAnd => Ok("AND"),
+        CTableFilterType::ConjunctionOr => Ok("OR"),
+        _ => Err(NotImplementedException)
+    }
+}
+
+// Rust version of CreateExpression
+fn create_expression(
+    column_name: &str,
+    filters: &Vec<*mut CTableFilter>,
+    op: &str,
+) -> Result<String, InternalException> {
+    let mut filter_entries = Vec::new();
+    for &filter in filters {
+        filter_entries.push(transform_filter(column_name, filter)?);
+    }
+    let operator_str = &format!(" {} ", op);
+    Ok(format!("({})", filter_entries.join(operator_str)))
+}
+
+// Rust version of TransformFilter
+fn transform_filter(
+    column_name: &str,
+    filter: *mut CTableFilter,
+) -> Result<String, InternalException> {
+    if filter.is_null() {
+        return Err(InternalException);
+    }
+
+    unsafe {
+        match (*filter).filter_type {
+            CTableFilterType::IsNull => Ok(format!("{} IS NULL", column_name)),
+            CTableFilterType::IsNotNull => Ok(format!("{} IS NOT NULL", column_name)),
+            CTableFilterType::ConstantComparison => {
+                let constant_filter = &*(filter as *const ConstantFilter);
+                let constant_filter_str = constant_filter.constant.to_string_lossy().into_owned();
+                let constant_string = format!("'{}'", constant_filter_str);
+                let operator_string = transform_comparison(&constant_filter.comparison_type)?;
+                Ok(format!("{} {} {}", column_name, operator_string, constant_string))
+            }
+            CTableFilterType::ConjunctionAnd | CTableFilterType::ConjunctionOr => {
+                let conjunction_filter = &*(filter as *const ConjunctionFilter);
+                let operator_string = transform_comparison(&conjunction_filter.filter_type)?;
+                create_expression(column_name, &conjunction_filter.child_filters, &operator_string)
+            }
+        }
+    }
+}
+
 pub unsafe fn duckdb_to_mysql_request(
     schema: &str,
     table: &str,
-    column_ids: &Vec<idx_t>) -> String {
+    column_ids: &Vec<idx_t>,
+    filters: *mut _duckdb_table_filter_set,
+) -> String {
     let type_infos_arc = get_mysql_table_type_infos_for_schema_table(
         &schema,
         &table,
@@ -56,7 +163,10 @@ pub unsafe fn duckdb_to_mysql_request(
     }).collect::<Vec<_>>().join(", ");
 
     let mut filter_string = String::new();
-    /*if let Some(filters) = &lstate.filters {
+
+
+    filters.__tfs as *mut CTableFilterSet;
+    if let Some(filters) = &lstate.filters {
         if !filters.filters.is_empty() {
             let filter_entries = filters.filters.iter().map(|(column_id, filter)| {
                 let column_name = format!("`{}`", bind_data.names[lstate.column_ids[*column_id]]);
@@ -64,7 +174,7 @@ pub unsafe fn duckdb_to_mysql_request(
             }).collect::<Vec<_>>();
             filter_string = format!(" WHERE {}", filter_entries.join(" AND "));
         }
-    }*/
+    }
 
     format!(
         "SELECT {} FROM `{}`.`{}` {}",
@@ -80,9 +190,10 @@ pub unsafe extern "C" fn read_mysql_init(info: duckdb_init_info) {
     let global_init_data = InitInfo::from(info);
     let bind_data = global_init_data.get_bind_data::<MysqlScanBindData>();
     let column_ids = global_init_data.get_column_indices();
+    let filters: *mut _duckdb_table_filter_set = global_init_data.get_table_filter_set();
 
     //let url_binding = CString::from_raw((*bind_data).url);
-    let url = (*bind_data).get_url();
+    //let url = (*bind_data).get_url();
 
     let schema_binding = CString::from_raw((*bind_data).schema);
     let schema = schema_binding.to_str().unwrap();
@@ -92,7 +203,7 @@ pub unsafe extern "C" fn read_mysql_init(info: duckdb_init_info) {
 
     // Allocate memory for the base_sql
     let sql_str = duckdb_to_mysql_request(
-        schema, table, &column_ids,
+        schema, table, &column_ids, filters,
     );
     //println!("SQL: {}", sql_str);
     let base_sql = CString::new(sql_str).expect("CString::new failed").into_raw();

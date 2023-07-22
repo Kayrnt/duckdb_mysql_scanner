@@ -5,7 +5,8 @@ use std::ffi::{c_void, CString};
 use crate::duckly::{
     duckdb_init_get_bind_data, duckdb_init_get_column_count, duckdb_init_get_column_index,
     duckdb_init_get_extra_info, duckdb_init_info, duckdb_init_set_error, duckdb_init_set_init_data,
-    duckdb_init_set_max_threads, idx_t,
+    duckdb_init_set_max_threads, idx_t, duckdb_init_get_table_filter_set, duckdb_table_filter_set,
+    _duckdb_table_filter_set
 };
 
 /// An interface to store and retrieve data during the function init stage
@@ -43,6 +44,14 @@ impl InitInfo {
             }
         }
         indices
+    }
+
+    pub fn get_table_filter_set(&self) -> *mut _duckdb_table_filter_set {
+        let mut table_filter_set;
+        unsafe {
+            table_filter_set = duckdb_init_get_table_filter_set(self.0);
+        }
+        table_filter_set
     }
 
     /// Retrieves the extra info of the function as set in [`TableFunction::set_extra_info`]
