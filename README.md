@@ -40,7 +40,7 @@ CALL MYSQL_ATTACH('mysql://user:password@host:port/database');
 
 There are few additional named parameters:
 
-- `source_schema` the name of a non-standard schema name in Postgres to get tables from. Default is `public`.
+- `source_schema` the name of a non-standard schema name in mysql to get tables from. Default is `public`.
 - `sink_schema` the schema name in DuckDB to create views. Default is `main`.
 - `overwrite` whether we should overwrite existing views in the target schema, default is `false`.
 - `filter_pushdown` whether filter predicates that DuckDB derives from the query should be forwarded to MySQL, defaults to `true`.

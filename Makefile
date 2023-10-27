@@ -18,6 +18,14 @@ ifeq (${OSX_BUILD_AARCH64}, 1)
 	OSX_BUILD_AARCH64_FLAG=-DOSX_BUILD_AARCH64=1
 endif
 
+VCPKG_TOOLCHAIN_PATH?=
+ifneq ("${VCPKG_TOOLCHAIN_PATH}", "")
+	TOOLCHAIN_FLAGS:=${TOOLCHAIN_FLAGS} -DVCPKG_MANIFEST_DIR='${PROJ_DIR}' -DVCPKG_BUILD=1 -DCMAKE_TOOLCHAIN_FILE='${VCPKG_TOOLCHAIN_PATH}'
+endif
+ifneq ("${VCPKG_TARGET_TRIPLET}", "")
+	TOOLCHAIN_FLAGS:=${TOOLCHAIN_FLAGS} -DVCPKG_TARGET_TRIPLET='${VCPKG_TARGET_TRIPLET}'
+endif
+
 ifeq ($(GEN),ninja)
 	GENERATOR=-G "Ninja"
 	FORCE_COLOR=-DFORCE_COLORED_OUTPUT=1
@@ -40,13 +48,13 @@ clean:
 build:
 	mkdir -p build/debug && \
 	cmake $(GENERATOR) $(FORCE_COLOR) -DCMAKE_BUILD_TYPE=Debug ${BUILD_FLAGS} \
-	duckdb-extension-framework/duckdb/CMakeLists.txt ${EXTENSION_FLAGS} -B build/debug && \
+	-S ./duckdb/ ${EXTENSION_FLAGS} -B build/debug && \
 	cmake --build build/debug --config Debug
 
 release:
 	mkdir -p build/release && \
 	cmake $(GENERATOR) $(FORCE_COLOR) -DCMAKE_BUILD_TYPE=Release ${BUILD_FLAGS} \
-	-S ./duckdb-extension-framework/duckdb/ $(EXTENSION_FLAGS) -B build/release && \
+	-S ./duckdb/ $(EXTENSION_FLAGS) -B build/release && \
 	cmake --build build/release --config Release
 
 update:
