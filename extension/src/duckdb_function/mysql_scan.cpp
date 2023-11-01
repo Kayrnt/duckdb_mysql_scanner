@@ -9,6 +9,7 @@
 #include "../transformer/duckdb_to_mysql_request.cpp"
 #include "../transformer/mysql_to_duckdb_result.cpp"
 #include "../model/attach_function_data.cpp"
+#include <spdlog/spdlog.h>
 
 
 using namespace duckdb;
@@ -72,10 +73,10 @@ static void MysqlInitPerTaskInternal(ClientContext &context, const MysqlBindData
 	lstate.end_page = page_start_at + page_to_fetch;
 	lstate.pagesize = STANDARD_VECTOR_SIZE;
 
-	// std::cout << "lstate.start_page: " << lstate.start_page << std::endl;
-	// std::cout << "lstate.end_page: " << lstate.end_page << std::endl;
+	// spdlog::debug("lstate.start_page: " << lstate.start_page <<);
+	// spdlog::debug("lstate.end_page: " << lstate.end_page <<);
 
-	// std::cout << "BASE SQL: " << lstate.base_sql << std::endl;
+	// spdlog::debug("BASE SQL: " << lstate.base_sql <<);
 
 	lstate.exec = false;
 	lstate.done = false;
@@ -88,11 +89,11 @@ static void MysqlInitPerTaskInternal(ClientContext &context, const MysqlBindData
 				)",
 			lstate.base_sql, lstate.pagesize * lstate.end_page, lstate.start_page * lstate.current_page);
 
-	// std::cout << "running sql: " << sql << std::endl;
+	spdlog::debug("running sql: {}", sql);
 	lstate.result_set = lstate.stmt->executeQuery(sql);
 	if (lstate.result_set->rowsCount() == 0)
 	{ // done here, lets try to get more
-		// std::cout << "done reading, result set empty" << std::endl;
+		spdlog::debug("done reading, result set empty");
 		lstate.done = true;
 	}
 }
@@ -103,10 +104,10 @@ static bool MysqlParallelStateNext(ClientContext &context, const FunctionData *b
 	D_ASSERT(bind_data_p);
 	auto bind_data = (const MysqlBindData *)bind_data_p;
 
-	// std::cout << "MysqlParallelStateNext: parallel_lock" << std::endl;
+	// spdlog::debug("MysqlParallelStateNext: parallel_lock" <<);
 	lock_guard<mutex> parallel_lock(gstate.lock);
 
-	// std::cout << "MysqlParallelStateNext: gstate.page_to_fetch: " << bind_data->approx_number_of_pages << std::endl;
+	// spdlog::debug("MysqlParallelStateNext: gstate.page_to_fetch: " << bind_data->approx_number_of_pages <<);
 	if (gstate.start_page < bind_data->approx_number_of_pages)
 	{
 		MysqlInitPerTaskInternal(context, bind_data, lstate, gstate.start_page, bind_data->approx_number_of_pages);
@@ -138,32 +139,32 @@ static void MysqlScan(ClientContext &context, TableFunctionInput &data, DataChun
 
 	while (true)
 	{
-		// std::cout << "while true..." << std::endl;
+		// spdlog::debug("while true..." <<);
 		if (local_state.done && !MysqlParallelStateNext(context, data.bind_data.get(), local_state, gstate))
 		{
-			// std::cout << "OUTPUT (size):" << output.size() << std::endl;
+			// spdlog::debug("OUTPUT (size):" << output.size() <<);
 			// output.Print();
-			// std::cout << "Annnnnd we're done" << std::endl;
+			// spdlog::debug("Annnnnd we're done" <<);
 			return;
 		}
 
 		idx_t output_offset = 0;
 
-		// std::cout << "reading result set" << std::endl;
+		// spdlog::debug("reading result set" <<);
 
 		// iterate over the result set and write the result in the output data chunk
 		while (local_state.result_set->next() && output_offset < STANDARD_VECTOR_SIZE)
 		{
-			// std::cout << "reading row: " << output_offset << std::endl;
+			// spdlog::debug("reading row: " << output_offset <<);
 			// for each column from the bind data, read the value and write it to the result vector
 			for (idx_t query_col_idx = 0; query_col_idx < output.ColumnCount(); query_col_idx++)
 			{
-				//std::cout << "ITERATE result set/ query_col_idx: " << query_col_idx << " output_offset: " << output_offset << std::endl;
+				//spdlog::debug("ITERATE result set/ query_col_idx: " << query_col_idx << " output_offset: " << output_offset <<);
 				auto table_col_idx = local_state.column_ids[query_col_idx];
 				auto &out_vec = output.data[query_col_idx];
-				//std::cout << "bind_data.names[table_col_idx] " << bind_data.names[table_col_idx] << std::endl;
-				//std::cout << "bind_data.types[table_col_idx] " << bind_data.types[table_col_idx].ToString() << std::endl;
-				//std::cout << "bind_data.columns[table_col_idx].type_info " << bind_data.columns[table_col_idx].type_info.name << std::endl;
+				//spdlog::debug("bind_data.names[table_col_idx] " << bind_data.names[table_col_idx] <<);
+				//spdlog::debug("bind_data.types[table_col_idx] " << bind_data.types[table_col_idx].ToString() <<);
+				//spdlog::debug("bind_data.columns[table_col_idx].type_info " << bind_data.columns[table_col_idx].type_info.name <<);
 				//  print the size of output data
 				ProcessValue(local_state.result_set,
 										 bind_data.types[table_col_idx],
@@ -175,19 +176,19 @@ static void MysqlScan(ClientContext &context, TableFunctionInput &data, DataChun
 
 			output_offset++;
 
-			// std::cout << "Result set done, final output_offset " << output_offset << std::endl;
+			// spdlog::debug("Result set done, final output_offset " << output_offset <<);
 
 			output.SetCardinality(output_offset);
 		}
 
-		// std::cout << "output vector: " << output.size() << std::endl;
+		// spdlog::debug("output vector: " << output.size() <<);
 
-		//  std::cout << "local_state.current_page: " << local_state.current_page << std::endl;
+		//  spdlog::debug("local_state.current_page: " << local_state.current_page <<);
 		local_state.current_page += 1;
 
 		if (local_state.current_page == local_state.end_page)
 		{
-			// std::cout << "current = end => done" << std::endl;
+			// spdlog::debug("current = end => done" <<);
 			local_state.done = true;
 		}
 
@@ -211,7 +212,7 @@ static unique_ptr<LocalTableFunctionState> MysqlInitLocalState(ExecutionContext 
 
 	auto local_state = make_uniq<MysqlLocalState>();
 	local_state->column_ids = input.column_ids;
-	local_state->pool = MySQLConnectionManager::getConnectionPool(5, bind_data.host, bind_data.username, bind_data.password);
+	local_state->pool = MySQLConnectionManager::getConnectionPool(1, 5, bind_data.host, bind_data.username, bind_data.password);
 	local_state->conn = (local_state->pool)->getConnection();
 	local_state->filters = input.filters.get();
 
@@ -279,7 +280,7 @@ static std::tuple<vector<MysqlColumnInfo>, vector<string>, vector<LogicalType>, 
 	// can't scan a table without columns (yes those exist)
 	if (res2->rowsCount() == 0)
 	{
-		throw InvalidInputException("Table %s does not contain any columns.", table_name);
+		throw InvalidInputException("Table %s.%s does not contain any columns OR does not exist in the DB.", schema_name, table_name);
 	}
 
 	// set the column types in a MysqlColumnInfo struct by iterating over the result set
@@ -319,33 +320,11 @@ static std::tuple<vector<MysqlColumnInfo>, vector<string>, vector<LogicalType>, 
 
 }
 
-static void printCurrentTime(string msg){
-	// Get the current time point
-    auto currentTime = std::chrono::system_clock::now();
-
-    // Get the duration since the epoch
-    auto duration = currentTime.time_since_epoch();
-
-    // Get the number of milliseconds
-    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
-
-    // Extract the milliseconds from the duration
-    long long ms = milliseconds.count() % 1000;
-
-    // Convert the time point to a time_t object
-    std::time_t currentTimeT = std::chrono::system_clock::to_time_t(currentTime);
-
-    // Convert the time_t object to a string
-    std::string timeString = std::ctime(&currentTimeT);
-
-    // Print the time string with milliseconds
-    // std::cout << "Current time with milliseconds: " << timeString << " // ms: " << ms << " for " << msg << std::endl;
-}
-
 static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionBindInput &input,
 																					vector<LogicalType> &return_types, vector<string> &names)
 {
 
+  spdlog::debug("MysqlBind");
 	auto bind_data = make_uniq<MysqlBindData>();
 
 	bind_data->host = input.inputs[0].GetValue<string>();
@@ -355,9 +334,7 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 	bind_data->schema_name = input.inputs[3].GetValue<string>();
 	bind_data->table_name = input.inputs[4].GetValue<string>();
 
-	auto driver = sql::mysql::get_mysql_driver_instance();
-
-	auto connection_pool = MySQLConnectionManager::getConnectionPool(5, bind_data->host, bind_data->username, bind_data->password);
+	auto connection_pool = MySQLConnectionManager::getConnectionPool(1, 5, bind_data->host, bind_data->username, bind_data->password);
 
 	// // Create threads for concurrent execution
   //   std::thread t1(GetNumberOfShard, connection_pool, bind_data.get());
@@ -368,14 +345,14 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
   //   t2.join();
 	
 	// print current time with milliseconds and append GetApproxNumberOfPageForTable
-	printCurrentTime("GetApproxNumberOfPageForTable");
+	spdlog::debug("GetApproxNumberOfPageForTable");
 
-	// std::cout << "Current time: " << std::ctime(&result) << " GetApproxNumberOfPageForTable " << bind_data->table_name << std::endl;
+	//spdlog::debug("Current time: " << std::ctime(&result) << " GetApproxNumberOfPageForTable " << bind_data->table_name <<);
 
 	std::future<int64_t> fut = std::async (GetApproxNumberOfPageForTable, connection_pool, bind_data->schema_name, bind_data->table_name);
-	printCurrentTime("GetTableTypesInfos");
+	spdlog::debug("GetTableTypesInfos");
 	auto columns_tuple = GetTableTypesInfos(connection_pool, bind_data->schema_name, bind_data->table_name);
-	printCurrentTime("GetTableTypesInfos DONE");
+	spdlog::debug("GetTableTypesInfos DONE");
 	bind_data->columns = std::get<0>(columns_tuple);
 	bind_data->names = std::get<1>(columns_tuple);
 	bind_data->types = std::get<2>(columns_tuple);
@@ -387,7 +364,7 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 	} else {
 		bind_data->approx_number_of_pages = fut.get();
 	}
-	printCurrentTime("GetApproxNumberOfPageForTable DONE");
+	spdlog::debug("GetApproxNumberOfPageForTable DONE");
 
 	return_types = bind_data->types;
 	names = bind_data->names;

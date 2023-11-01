@@ -1,3 +1,3 @@
-[submodule "duckdb-extension-framework/duckdb"]
-	path = duckdb-extension-framework/duckdb
-	url = git@github.com:duckdb/duckdb.git
+[submodule "duckdb"]
+	path = duckdb
+	url = https://github.com/duckdb/duckdb.git

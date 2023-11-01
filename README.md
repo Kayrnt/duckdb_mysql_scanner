@@ -17,15 +17,27 @@ LOAD 'mysql_scanner.duckdb_extension';
 
 If you prefer to not attach all tables, but just query a single table, that is possible using the `MYSQL_SCAN` table-producing function, e.g.
 
+
 ```SQL
-SELECT * FROM MYSQL_SCAN('mysql://user:password@host:port/database', 'public', 'mytable');
+SELECT * FROM MYSQL_SCAN('localhost', 'root', '', 'public', 'mytable');
 ```
 
-`MYSQL_SCAN` takes 3 string parameters:
+`MYSQL_SCAN` takes 5 string parameters:
 
-- MySQL url string (i.e. `mysql://user:password@host:port/database`, some parameters can be omitted)
-- the schema name in MySQL (ie the database name)
+- the host (ip or name)
+- the user name
+- the password for that user
+- the schema name in MySQL
 - the table name in MySQL
+
+### Attach a single table with pushdown (:white_check_mark: working)
+
+Same as `MYSQL_SCAN` but with pushdown.
+
+```SQL
+SELECT * FROM MYSQL_SCAN_PUSHDOWN('localhost', 'root', '', 'public', 'mytable')
+WHERE id > 1000;
+```
 
 ### Attach a MySQL database (:warning: :red_circle: not yet working)
 
@@ -40,7 +52,7 @@ CALL MYSQL_ATTACH('mysql://user:password@host:port/database');
 
 There are few additional named parameters:
 
-- `source_schema` the name of a non-standard schema name in Postgres to get tables from. Default is `public`.
+- `source_schema` the name of a non-standard schema name in mysql to get tables from. Default is `public`.
 - `sink_schema` the schema name in DuckDB to create views. Default is `main`.
 - `overwrite` whether we should overwrite existing views in the target schema, default is `false`.
 - `filter_pushdown` whether filter predicates that DuckDB derives from the query should be forwarded to MySQL, defaults to `true`.
@@ -68,6 +80,8 @@ Then you can query those views normally using SQL.
 
 ### Build
 
+#### Requirements
+
 Download the C++ extension for MySQL on [MySQL dev connector C++](https://dev.mysql.com/downloads/connector/cpp/).
 Extract the sources to `mysql` directory in the project root (you should have a mysql/include and lib or lib64 directories).
 
@@ -77,13 +91,30 @@ OpenSSL library is required to build the extension. For instance, on MacOS, you 
 brew install openssl
 ```
 
-To build, from the project root directory, type:
+You'll need to install spdlog at the root of the project:
+
+```sh
+$git clone https://github.com/gabime/spdlog.git
+$ cd spdlog && mkdir build && cd build
+$ cmake .. && make -j
+```
+
+#### build commands
+
+As release is the default target, to build:
+from the project root directory, type:
 
 ```sh
 make
 ```
 
-Add `debug` to build debug version.
+if possible, use ninja for faster build:
+
+```sh
+$ GEN=ninja make
+```
+
+Add `debug` target to build debug version.
 
 ### Run
 
@@ -105,7 +136,7 @@ LOAD 'build/release/extension/mysql_scanner/mysql_scanner.duckdb_extension';
 
 Copyright 2023 [Kayrnt](kayrnt@gmail.com).
 
-This project is licensed under the GNU General Public License (LICENSE-GPL).
+This project is licensed under the GNU General Public License v3 (LICENSE-GPLv3).
 
 ## Acknowledgments
 

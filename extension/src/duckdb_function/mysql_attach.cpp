@@ -52,7 +52,7 @@ static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, D
 		return;
 	}
 
-	gstate.pool = MySQLConnectionManager::getConnectionPool(5, data.host, data.username, data.password);
+	gstate.pool = MySQLConnectionManager::getConnectionPool(1, 5, data.host, data.username, data.password);
 	auto conn = gstate.pool->getConnection();
 
 	auto dconn = Connection(context.db->GetDatabase(context));

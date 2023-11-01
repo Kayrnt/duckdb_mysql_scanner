@@ -11,7 +11,7 @@ private:
     static std::mutex mapMutex;
 
 public:
-    static ConnectionPool* getConnectionPool(int poolSize, const std::string& host, const std::string& username, const std::string& password);
+    static ConnectionPool* getConnectionPool(int minPoolSize, int maxPoolSize, const std::string& host, const std::string& username, const std::string& password);
     static void close(const std::string& host, const std::string& username, const std::string& password);
     ~MySQLConnectionManager();
 };

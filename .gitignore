@@ -50,6 +50,3 @@ mysql
 
 # Cargo lock file
 Cargo.lock
-
-# DuckDB as it's a submodule
-duckdb-extension-framework/duckdb
