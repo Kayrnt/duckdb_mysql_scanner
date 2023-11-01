@@ -17,9 +17,20 @@ LOAD 'mysql_scanner.duckdb_extension';
 
 If you prefer to not attach all tables, but just query a single table, that is possible using the `MYSQL_SCAN` table-producing function, e.g.
 
+
+If you prefer to not attach all tables, but just query a single table, that is possible using the `MYSQL_SCAN` table-producing function, e.g.
+
 ```SQL
-SELECT * FROM MYSQL_SCAN('mysql://user:password@host:port/database', 'public', 'mytable');
+SELECT * FROM MYSQL_SCAN('localhost', 'root', '', 'public', 'mytable');
 ```
+
+`MYSQL_SCAN` takes 5 string parameters:
+
+- the host (ip or name)
+- the user name
+- the password for that user
+- the schema name in MySQL
+- the table name in MySQL
 
 `MYSQL_SCAN` takes 3 string parameters:
 

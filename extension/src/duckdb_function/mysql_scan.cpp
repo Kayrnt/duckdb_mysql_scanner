@@ -346,6 +346,7 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 																					vector<LogicalType> &return_types, vector<string> &names)
 {
 
+  // printCurrentTime("MysqlBind");
 	auto bind_data = make_uniq<MysqlBindData>();
 
 	bind_data->host = input.inputs[0].GetValue<string>();
@@ -354,8 +355,6 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 
 	bind_data->schema_name = input.inputs[3].GetValue<string>();
 	bind_data->table_name = input.inputs[4].GetValue<string>();
-
-	auto driver = sql::mysql::get_mysql_driver_instance();
 
 	auto connection_pool = MySQLConnectionManager::getConnectionPool(5, bind_data->host, bind_data->username, bind_data->password);
 
@@ -368,14 +367,14 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
   //   t2.join();
 	
 	// print current time with milliseconds and append GetApproxNumberOfPageForTable
-	printCurrentTime("GetApproxNumberOfPageForTable");
+	// printCurrentTime("GetApproxNumberOfPageForTable");
 
 	// std::cout << "Current time: " << std::ctime(&result) << " GetApproxNumberOfPageForTable " << bind_data->table_name << std::endl;
 
 	std::future<int64_t> fut = std::async (GetApproxNumberOfPageForTable, connection_pool, bind_data->schema_name, bind_data->table_name);
-	printCurrentTime("GetTableTypesInfos");
+	// printCurrentTime("GetTableTypesInfos");
 	auto columns_tuple = GetTableTypesInfos(connection_pool, bind_data->schema_name, bind_data->table_name);
-	printCurrentTime("GetTableTypesInfos DONE");
+	// printCurrentTime("GetTableTypesInfos DONE");
 	bind_data->columns = std::get<0>(columns_tuple);
 	bind_data->names = std::get<1>(columns_tuple);
 	bind_data->types = std::get<2>(columns_tuple);
@@ -387,7 +386,7 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 	} else {
 		bind_data->approx_number_of_pages = fut.get();
 	}
-	printCurrentTime("GetApproxNumberOfPageForTable DONE");
+	// printCurrentTime("GetApproxNumberOfPageForTable DONE");
 
 	return_types = bind_data->types;
 	names = bind_data->names;

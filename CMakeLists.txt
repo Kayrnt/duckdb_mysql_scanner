@@ -2,7 +2,11 @@
 cmake_minimum_required(VERSION 3.21)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD 11)
+#set(CMAKE_CXX_STANDARD 11)
+#set(CMAKE_CXX_STANDARD 20)
+
+#set(CMAKE_C_COMPILER /opt/homebrew/bin/gcc-13)
+#set(CMAKE_CXX_COMPILER /opt/homebrew/bin/g++-13)
 
 if (POLICY CMP0135)
     cmake_policy(SET CMP0135 NEW)
@@ -26,6 +30,9 @@ set(BUILD_UNITTESTS FALSE) # Disable unit test build in duckdb
 set(OPENSSL_USE_STATIC_LIBS ON)
 find_package(OpenSSL REQUIRED)
 
+# Setup SuperiorMySqlpp
+#find_package(SuperiorMySqlpp REQUIRED)
+
 # Extension sources files
 include_directories(extension/include)
 add_subdirectory(extension/src)
@@ -41,6 +48,17 @@ include_directories(${MYSQL_CONNECTOR_CPP_INCLUDE})
 # Add the MySQL Connector/C++ library
 link_directories(${MYSQL_CONNECTOR_CPP_LIB})
 
+# Set the path to the MySQL Connector/C library
+set(MYSQL_CONNECTOR_C_PATH ${CMAKE_CURRENT_SOURCE_DIR}/mysql-client)
+# Set the path to the MySQL Connector/C headers
+set(MYSQL_CONNECTOR_C_INCLUDE ${MYSQL_CONNECTOR_C_PATH}/include)
+# Set the path to the MySQL Connector/C library files
+set(MYSQL_CONNECTOR_C_LIB ${MYSQL_CONNECTOR_C_PATH}/lib64)
+# Add the MySQL Connector/C headers
+#include_directories(${MYSQL_CONNECTOR_C_INCLUDE})
+# Add the MySQL Connector/C library
+#link_directories(${MYSQL_CONNECTOR_C_LIB})
+
 # Create the extension library
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
 
@@ -50,6 +68,8 @@ set(EXTENSION_DEPENDENCIES
    ${MYSQL_CONNECTOR_CPP_LIB}/libcrypto.dylib
    resolv
 )
+   #mysqlclient
+   #SuperiorMySqlpp::SuperiorMySqlpp
 
 # Add dependencies to extension
 target_link_libraries(${EXTENSION_NAME} PUBLIC ${EXTENSION_DEPENDENCIES})

@@ -3,27 +3,43 @@
 ConnectionPool::ConnectionPool(int poolSize, const std::string &host, const std::string &username, const std::string &password)
 {
   // std::cout << "Creating connection pool with size " << poolSize << std::endl;
-  driver = sql::mysql::get_mysql_driver_instance();
 
   std::vector<std::thread> threads(poolSize);
+  driver = sql::mysql::get_mysql_driver_instance();
 
   for (int i = 0; i < poolSize; ++i)
   {
     threads[i] = std::thread([this, host, username, password]()
-                             {
-            sql::Connection* connection = driver->connect(host, username, password);
+           {
+            // std::cout << "Creating connection host " << host << " username " << username << " password " << password << std::endl;
+            try {
+               sql::Connection* connection = driver->connect(host, username, password);
+               // std::cout << "Connection created" << std::endl;
+               // Add a lock to ensure mutual exclusion when accessing the connections vector
+               std::lock_guard<std::mutex> lock(connectionsMutex);
+               connections.push(connection);
+            } catch (sql::SQLException &e) {
+              std::cerr << "Error connecting to database" << std::endl;
+              std::cerr << e.what() << std::endl;
+              std::cerr << e.getErrorCode() << std::endl;
+              std::cerr << e.getSQLState() << std::endl;
+            } catch (...) {
+              std::cerr <<  "Unknown Error connecting to database" << std::endl;
+            }
 
-            // Add a lock to ensure mutual exclusion when accessing the connections vector
-            std::lock_guard<std::mutex> lock(connectionsMutex);
-
-            connections.push(connection); });
+         });
   }
 
+
+
+  // std::cout << "Waiting for threads to finish" << std::endl;
   // Wait for all threads to finish
   for (std::thread &thread : threads)
   {
     thread.join();
+    //std::cout << "Thread finished" << std::endl;
   }
+  //std::cout << "Threads finished" << std::endl;
 }
 
 sql::Connection *ConnectionPool::getConnection()

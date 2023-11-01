@@ -14,6 +14,8 @@
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/planner/table_filter.hpp"
 #include "duckdb/parser/parsed_data/create_function_info.hpp"
+//#include <superior_mysqlpp.hpp>
+//#include <superior_mysqlpp/query.hpp>
 
 namespace duckdb
 {
