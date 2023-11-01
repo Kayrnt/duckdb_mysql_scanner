@@ -18,8 +18,6 @@ LOAD 'mysql_scanner.duckdb_extension';
 If you prefer to not attach all tables, but just query a single table, that is possible using the `MYSQL_SCAN` table-producing function, e.g.
 
 
-If you prefer to not attach all tables, but just query a single table, that is possible using the `MYSQL_SCAN` table-producing function, e.g.
-
 ```SQL
 SELECT * FROM MYSQL_SCAN('localhost', 'root', '', 'public', 'mytable');
 ```
@@ -32,11 +30,14 @@ SELECT * FROM MYSQL_SCAN('localhost', 'root', '', 'public', 'mytable');
 - the schema name in MySQL
 - the table name in MySQL
 
-`MYSQL_SCAN` takes 3 string parameters:
+### Attach a single table with pushdown (:white_check_mark: working)
 
-- MySQL url string (i.e. `mysql://user:password@host:port/database`, some parameters can be omitted)
-- the schema name in MySQL (ie the database name)
-- the table name in MySQL
+Same as `MYSQL_SCAN` but with pushdown.
+
+```SQL
+SELECT * FROM MYSQL_SCAN_PUSHDOWN('localhost', 'root', '', 'public', 'mytable')
+WHERE id > 1000;
+```
 
 ### Attach a MySQL database (:warning: :red_circle: not yet working)
 
@@ -79,6 +80,8 @@ Then you can query those views normally using SQL.
 
 ### Build
 
+#### Requirements
+
 Download the C++ extension for MySQL on [MySQL dev connector C++](https://dev.mysql.com/downloads/connector/cpp/).
 Extract the sources to `mysql` directory in the project root (you should have a mysql/include and lib or lib64 directories).
 
@@ -88,13 +91,30 @@ OpenSSL library is required to build the extension. For instance, on MacOS, you 
 brew install openssl
 ```
 
-To build, from the project root directory, type:
+You'll need to install spdlog at the root of the project:
+
+```sh
+$git clone https://github.com/gabime/spdlog.git
+$ cd spdlog && mkdir build && cd build
+$ cmake .. && make -j
+```
+
+#### build commands
+
+As release is the default target, to build:
+from the project root directory, type:
 
 ```sh
 make
 ```
 
-Add `debug` to build debug version.
+if possible, use ninja for faster build:
+
+```sh
+$ GEN=ninja make
+```
+
+Add `debug` target to build debug version.
 
 ### Run
 
@@ -116,7 +136,7 @@ LOAD 'build/release/extension/mysql_scanner/mysql_scanner.duckdb_extension';
 
 Copyright 2023 [Kayrnt](kayrnt@gmail.com).
 
-This project is licensed under the GNU General Public License (LICENSE-GPL).
+This project is licensed under the GNU General Public License v3 (LICENSE-GPLv3).
 
 ## Acknowledgments
 

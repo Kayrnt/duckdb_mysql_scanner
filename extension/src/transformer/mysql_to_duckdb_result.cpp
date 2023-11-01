@@ -3,6 +3,10 @@
 #include "../model/mysql_bind_data.hpp"
 #include "../state/mysql_local_state.hpp"
 #include <spdlog/spdlog.h>
+#include <iostream>
+#include <chrono>
+#include <sstream>
+#include <ctime>
 
 using namespace duckdb;
 
@@ -101,6 +105,16 @@ static LogicalType DuckDBType2(MysqlTypeInfo *type_info)
 static LogicalType DuckDBType(MysqlColumnInfo &info)
 {
 	return DuckDBType2(&info.type_info);
+}
+
+static std::chrono::system_clock::time_point parseTimestamp(const std::string& timestampStr) {
+    std::tm tm = {};
+    if (strptime(timestampStr.c_str(), "%Y-%m-%d %H:%M:%S", &tm) == nullptr) {
+        throw std::invalid_argument("Invalid timestamp format");
+    }
+
+    std::time_t time = std::mktime(&tm);
+    return std::chrono::system_clock::from_time_t(time);
 }
 
 static void ProcessValue(
@@ -208,14 +222,14 @@ static void ProcessValue(
 		break;
 	}
 
-	// case LogicalTypeId::DATE:
-	// {
-
-	// 	auto jd = res->getUInt64(col_idx);
-	// 	auto out_ptr = FlatVector::GetData<date_t>(out_vec);
-	// 	out_ptr[output_offset].days = jd + MYSQL_EPOCH_JDATE - 2440588; // magic! TODO check as copied from Postgres
-	// 	break;
-	// }
+//	 case LogicalTypeId::DATE:
+//	 {
+//
+//	 	auto jd = res->getUInt64(col_idx);
+//	 	auto out_ptr = FlatVector::GetData<date_t>(out_vec);
+//	 	out_ptr[output_offset].days = jd + MYSQL_EPOCH_JDATE - 2440588; // magic! TODO check as copied from Postgres
+//	 	break;
+//	 }
 
 	// case LogicalTypeId::TIME:
 	// {
@@ -237,20 +251,23 @@ static void ProcessValue(
 	// 	break;
 	// }
 
-	// case LogicalTypeId::TIMESTAMP_TZ:
-	// case LogicalTypeId::TIMESTAMP:
-	// {
-	// 	D_ASSERT(value_len == sizeof(int64_t));
-	// 	D_ASSERT(atttypmod == -1);
+	 case LogicalTypeId::TIMESTAMP_TZ:
+	 case LogicalTypeId::TIMESTAMP:
+	 {
+	 	D_ASSERT(value_len == sizeof(int64_t));
+	 	D_ASSERT(atttypmod == -1);
 
-	// 	auto usec = ntohll(Load<uint64_t>(value_ptr));
-	// 	auto time = usec % Interval::MICROS_PER_DAY;
-	// 	// adjust date
-	// 	auto date = (usec / Interval::MICROS_PER_DAY) + POSTGRES_EPOCH_JDATE - 2440588;
-	// 	// glue it back together
-	// 	FlatVector::GetData<timestamp_t>(out_vec)[output_offset].value = date * Interval::MICROS_PER_DAY + time;
-	// 	break;
-	// }
+    auto ts_string = res->getString(col_idx);
+    auto ts = parseTimestamp(ts_string);
+    // Get the duration since the epoch
+    std::chrono::system_clock::duration durationSinceEpoch = ts.time_since_epoch();
+    // Convert the duration to microseconds
+    auto microsecondsSinceEpoch = std::chrono::duration_cast<std::chrono::microseconds>(durationSinceEpoch);
+    // Extract the count of microseconds
+    long long microsecondsCount = microsecondsSinceEpoch.count();
+	 	FlatVector::GetData<timestamp_t>(out_vec)[output_offset].value = microsecondsCount;
+	 	break;
+	 }
 	case LogicalTypeId::ENUM:
 	{
 		auto mysql_str = res->getString(col_idx);
@@ -316,3 +333,4 @@ static void ProcessValue(
 		throw InternalException("Unsupported Type %s", type.ToString());
 	}
 }
+

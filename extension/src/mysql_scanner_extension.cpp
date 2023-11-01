@@ -26,7 +26,6 @@ namespace duckdb
 				: TableFunction("mysql_scan", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR},
 												MysqlScan, MysqlBind, MysqlInitGlobalState, MysqlInitLocalState)
 		{
-			spdlog::set_level(spdlog::level::debug);
 			to_string = MysqlScanToString;
 			projection_pushdown = true;
 		}
@@ -65,15 +64,20 @@ namespace duckdb
 		con.BeginTransaction();
 		auto &context = *con.context;
 		auto &catalog = Catalog::GetSystemCatalog(context);
+		// set the log level to warn
+		spdlog::set_level(spdlog::level::warn);
 
+   // Create the mysql_scan function
 		MysqlScanFunction mysql_fun;
 		CreateTableFunctionInfo mysql_info(mysql_fun);
 		catalog.CreateTableFunction(context, mysql_info);
 
+   // Create the mysql_scan_pushdown function
 		MysqlScanFunctionFilterPushdown mysql_fun_filter_pushdown;
 		CreateTableFunctionInfo mysql_filter_pushdown_info(mysql_fun_filter_pushdown);
 		catalog.CreateTableFunction(context, mysql_filter_pushdown_info);
 
+   // Create the mysql_attach function
 		MysqlAttachFunction attach_func;
 		CreateTableFunctionInfo attach_info(attach_func);
 		catalog.CreateTableFunction(context, attach_info);
