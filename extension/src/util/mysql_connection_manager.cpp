@@ -11,7 +11,7 @@ ConnectionPool *MySQLConnectionManager::getConnectionPool(
  const std::string &password
  )
 {
-  // std::cout << "Retrieving connection pool" << std::endl;
+  // spdlog::debug("Retrieving connection pool" <<);
   
   std::lock_guard<std::mutex> lock(mapMutex);
 
@@ -20,12 +20,12 @@ ConnectionPool *MySQLConnectionManager::getConnectionPool(
 
   if (existing_connection_pool != connectionMap.end())
   {
-    // std::cout << "Connection pool already exists, return existing!" << std::endl;
+    // spdlog::debug("Connection pool already exists, return existing!" <<);
     // ConnectionPool already exists, return the existing instance
     return existing_connection_pool->second;
   }
 
-  // std::cout << "Connection pool doesn't exist, create new!" << std::endl;
+  // spdlog::debug("Connection pool doesn't exist, create new!" <<);
   // ConnectionPool doesn't exist, create a new instance and add it to the map
   ConnectionPool *connectionPool = new ConnectionPool(minPoolSize, maxPoolSize, host, username, password);
   connectionMap[key] = connectionPool;
@@ -34,7 +34,7 @@ ConnectionPool *MySQLConnectionManager::getConnectionPool(
 
 void MySQLConnectionManager::close(const std::string &host, const std::string &username, const std::string &password)
 {
-  // std::cout << "MySQLConnectionManager :: Closing connection pool" << std::endl;
+  // spdlog::debug("MySQLConnectionManager :: Closing connection pool" <<);
   std::lock_guard<std::mutex> lock(mapMutex);
 
   auto key = std::make_tuple(host, username, password);
@@ -50,7 +50,7 @@ void MySQLConnectionManager::close(const std::string &host, const std::string &u
 
 MySQLConnectionManager::~MySQLConnectionManager()
 {
-  // std::cout << "Destroying connection manager" << std::endl;
+  // spdlog::debug("Destroying connection manager" <<);
   std::lock_guard<std::mutex> lock(mapMutex);
 
   for (auto &connection_key : connectionMap)

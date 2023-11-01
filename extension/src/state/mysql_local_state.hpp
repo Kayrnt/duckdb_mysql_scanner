@@ -3,6 +3,7 @@
 #include "duckdb.hpp"
 #include "../../mysql/include/mysql/jdbc.h"
 #include "connection_pool.hpp"
+#include <spdlog/spdlog.h>
 
 using namespace duckdb;
 
@@ -13,7 +14,7 @@ struct MysqlLocalState : public LocalTableFunctionState {
             result_set = nullptr;
         }
         if (stmt) {
-            // std::cout << "closing statement" << std::endl;
+            spdlog::debug("closing statement");
             stmt->close();
             stmt = nullptr;
         }

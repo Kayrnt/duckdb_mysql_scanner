@@ -14,8 +14,7 @@
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/planner/table_filter.hpp"
 #include "duckdb/parser/parsed_data/create_function_info.hpp"
-//#include <superior_mysqlpp.hpp>
-//#include <superior_mysqlpp/query.hpp>
+#include "spdlog/spdlog.h"
 
 namespace duckdb
 {
@@ -27,6 +26,7 @@ namespace duckdb
 				: TableFunction("mysql_scan", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR},
 												MysqlScan, MysqlBind, MysqlInitGlobalState, MysqlInitLocalState)
 		{
+			spdlog::set_level(spdlog::level::debug);
 			to_string = MysqlScanToString;
 			projection_pushdown = true;
 		}

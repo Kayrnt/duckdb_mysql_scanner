@@ -2,6 +2,7 @@
 
 #include "../model/mysql_bind_data.hpp"
 #include "../state/mysql_local_state.hpp"
+#include <spdlog/spdlog.h>
 
 using namespace duckdb;
 
@@ -110,8 +111,8 @@ static void ProcessValue(
 		idx_t query_col_idx,
 		idx_t output_offset)
 {
-	// std::cout << "Process value: query_col_idx : " << query_col_idx << std::endl;
-	// std::cout << "Process value: output_offset : " << output_offset << std::endl;
+	// spdlog::debug("Process value: query_col_idx : " << query_col_idx <<);
+	// spdlog::debug("Process value: output_offset : " << output_offset <<);
 	//  if(raw_col_idx == 2 || output_offset == 2){
 	//  throw InternalException("col_idx = %d, output_offset = %d", raw_col_idx, output_offset);
 	//  }
