@@ -3,9 +3,16 @@
 std::map<std::tuple<std::string, std::string, std::string>, ConnectionPool *> MySQLConnectionManager::connectionMap;
 std::mutex MySQLConnectionManager::mapMutex;
 
-ConnectionPool *MySQLConnectionManager::getConnectionPool(int poolSize, const std::string &host, const std::string &username, const std::string &password)
+ConnectionPool *MySQLConnectionManager::getConnectionPool(
+ int minPoolSize,
+ int maxPoolSize,
+ const std::string &host,
+ const std::string &username,
+ const std::string &password
+ )
 {
   // std::cout << "Retrieving connection pool" << std::endl;
+  
   std::lock_guard<std::mutex> lock(mapMutex);
 
   auto key = std::make_tuple(host, username, password);
@@ -20,7 +27,7 @@ ConnectionPool *MySQLConnectionManager::getConnectionPool(int poolSize, const st
 
   // std::cout << "Connection pool doesn't exist, create new!" << std::endl;
   // ConnectionPool doesn't exist, create a new instance and add it to the map
-  ConnectionPool *connectionPool = new ConnectionPool(poolSize, host, username, password);
+  ConnectionPool *connectionPool = new ConnectionPool(minPoolSize, maxPoolSize, host, username, password);
   connectionMap[key] = connectionPool;
   return connectionPool;
 }

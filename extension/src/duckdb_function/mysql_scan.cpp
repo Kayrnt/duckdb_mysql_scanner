@@ -211,7 +211,7 @@ static unique_ptr<LocalTableFunctionState> MysqlInitLocalState(ExecutionContext 
 
 	auto local_state = make_uniq<MysqlLocalState>();
 	local_state->column_ids = input.column_ids;
-	local_state->pool = MySQLConnectionManager::getConnectionPool(5, bind_data.host, bind_data.username, bind_data.password);
+	local_state->pool = MySQLConnectionManager::getConnectionPool(1, 5, bind_data.host, bind_data.username, bind_data.password);
 	local_state->conn = (local_state->pool)->getConnection();
 	local_state->filters = input.filters.get();
 
@@ -279,7 +279,7 @@ static std::tuple<vector<MysqlColumnInfo>, vector<string>, vector<LogicalType>, 
 	// can't scan a table without columns (yes those exist)
 	if (res2->rowsCount() == 0)
 	{
-		throw InvalidInputException("Table %s does not contain any columns.", table_name);
+		throw InvalidInputException("Table %s.%s does not contain any columns OR does not exist in the DB.", schema_name, table_name);
 	}
 
 	// set the column types in a MysqlColumnInfo struct by iterating over the result set
@@ -356,7 +356,7 @@ static unique_ptr<FunctionData> MysqlBind(ClientContext &context, TableFunctionB
 	bind_data->schema_name = input.inputs[3].GetValue<string>();
 	bind_data->table_name = input.inputs[4].GetValue<string>();
 
-	auto connection_pool = MySQLConnectionManager::getConnectionPool(5, bind_data->host, bind_data->username, bind_data->password);
+	auto connection_pool = MySQLConnectionManager::getConnectionPool(1, 5, bind_data->host, bind_data->username, bind_data->password);
 
 	// // Create threads for concurrent execution
   //   std::thread t1(GetNumberOfShard, connection_pool, bind_data.get());
