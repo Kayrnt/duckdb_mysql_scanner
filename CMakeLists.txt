@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-#set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 11)
 #set(CMAKE_CXX_STANDARD 20)
 
 #set(CMAKE_C_COMPILER /opt/homebrew/bin/gcc-13)
@@ -35,15 +35,10 @@ include_directories(extension/include)
 add_subdirectory(extension/src)
 
 # Set the path to the MySQL Connector/C++ library
-set(MYSQL_CONNECTOR_CPP_PATH ${CMAKE_CURRENT_SOURCE_DIR}/mysql)
-# Set the path to the MySQL Connector/C++ headers
-set(MYSQL_CONNECTOR_CPP_INCLUDE ${MYSQL_CONNECTOR_CPP_PATH}/include)
-# Set the path to the MySQL Connector/C++ library files
-set(MYSQL_CONNECTOR_CPP_LIB ${MYSQL_CONNECTOR_CPP_PATH}/lib64)
+set(MYSQL_CONNECTOR_CPP_PATH ${CMAKE_CURRENT_SOURCE_DIR}/mysql-connector-cpp)
+
 # Add the MySQL Connector/C++ headers
-include_directories(${MYSQL_CONNECTOR_CPP_INCLUDE})
-# Add the MySQL Connector/C++ library
-link_directories(${MYSQL_CONNECTOR_CPP_LIB})
+include_directories(${MYSQL_CONNECTOR_CPP_PATH}/build/include)
 
 # Add the spdlog library
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/spdlog/include)
@@ -51,10 +46,20 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/spdlog/include)
 # Create the extension library
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
 
+# export LDFLAGS="-L/opt/homebrew/opt/mysql-client/lib"
+# export CPPFLAGS="-I/opt/homebrew/opt/mysql-client/include"
+
+include_directories(${MYSQL_CONNECTOR_CPP_PATH}/build/include)
+
+
 set(EXTENSION_DEPENDENCIES
-   ${MYSQL_CONNECTOR_CPP_LIB}/libmysqlcppconn-static.a
-   ${MYSQL_CONNECTOR_CPP_LIB}/libssl.dylib
-   ${MYSQL_CONNECTOR_CPP_LIB}/libcrypto.dylib
+   /opt/homebrew/opt/mysql-client/lib/libmysqlclient.dylib
+   ${MYSQL_CONNECTOR_CPP_PATH}/build/jdbc/libmysqlcppconn-static.a
+   #${CMAKE_CURRENT_SOURCE_DIR}/mysql/lib64/libmysqlcppconn-static.a
+   /opt/homebrew/opt/openssl@1.1/lib/libssl.a
+   /opt/homebrew/opt/openssl@1.1/lib/libcrypto.a
+   #${CMAKE_CURRENT_SOURCE_DIR}/mysql/lib64/libssl.dylib
+   #${CMAKE_CURRENT_SOURCE_DIR}/mysql/lib64/libcrypto.dylib
    resolv
 )
 
@@ -67,12 +72,6 @@ set(PARAMETERS "-warnings")
 # Build the loadable extension target
 build_loadable_extension(${TARGET_NAME} ${PARAMETERS} ${EXTENSION_SOURCES})
 target_link_libraries(${TARGET_NAME}_loadable_extension ${EXTENSION_DEPENDENCIES})
-
-#export(
-#  TARGETS ${EXTENSION_NAME} spdlog
-#  NAMESPACE YourNamespace::
-#  FILE "${CMAKE_BINARY_DIR}/DuckDBExports.cmake"
-#)
 
 install(
   TARGETS ${EXTENSION_NAME}
