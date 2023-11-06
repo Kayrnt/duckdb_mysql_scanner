@@ -2,7 +2,6 @@
 
 #include "duckdb.hpp"
 #include <iostream>
-#include <mysql/jdbc.h>
 #include "mysql_scanner_extension.hpp"
 
 #include "model/mysql_bind_data.hpp"

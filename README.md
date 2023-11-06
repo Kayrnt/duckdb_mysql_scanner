@@ -1,6 +1,6 @@
 # DuckDB mysql_scanner extension
 
-> The project is in progress and not yet on par with postgres scanner or other integrations. There is no releases yet so you have to build it yourself.
+> DuckDB Labs team is working its own MySQL scanner extension, see [duckdb_mysql](https://github.com/duckdb/duckdb_mysql). I'll like freeze the development here since developing it twice isn't worth it.
 
 The mysql_scanner extension allows DuckDB to directly read data from a running MySQL instance. The data can be queried directly from the underlying MySQL tables, or read into DuckDB tables.
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "duckdb.hpp"
-#include "../../mysql/include/mysql/jdbc.h"
+#include "mysql_jdbc.h"
 #include "connection_pool.hpp"
 #include <spdlog/spdlog.h>
 

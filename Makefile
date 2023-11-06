@@ -45,7 +45,6 @@ EXTENSION_FLAGS=\
 
 clean:
 	rm -rf build
-	cargo clean
 
 # Debug build
 build:

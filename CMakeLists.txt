@@ -2,11 +2,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-#set(CMAKE_CXX_STANDARD 11)
-#set(CMAKE_CXX_STANDARD 20)
-
-#set(CMAKE_C_COMPILER /opt/homebrew/bin/gcc-13)
-#set(CMAKE_CXX_COMPILER /opt/homebrew/bin/g++-13)
+set(CMAKE_CXX_STANDARD 11)
 
 if (POLICY CMP0135)
     cmake_policy(SET CMP0135 NEW)
@@ -34,16 +30,8 @@ find_package(OpenSSL REQUIRED)
 include_directories(extension/include)
 add_subdirectory(extension/src)
 
-# Set the path to the MySQL Connector/C++ library
-set(MYSQL_CONNECTOR_CPP_PATH ${CMAKE_CURRENT_SOURCE_DIR}/mysql)
-# Set the path to the MySQL Connector/C++ headers
-set(MYSQL_CONNECTOR_CPP_INCLUDE ${MYSQL_CONNECTOR_CPP_PATH}/include)
-# Set the path to the MySQL Connector/C++ library files
-set(MYSQL_CONNECTOR_CPP_LIB ${MYSQL_CONNECTOR_CPP_PATH}/lib64)
 # Add the MySQL Connector/C++ headers
-include_directories(${MYSQL_CONNECTOR_CPP_INCLUDE})
-# Add the MySQL Connector/C++ library
-link_directories(${MYSQL_CONNECTOR_CPP_LIB})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/build_mysql_conn/include)
 
 # Add the spdlog library
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/spdlog/include)
@@ -51,10 +39,27 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/spdlog/include)
 # Create the extension library
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
 
+# Check if MYSQL_CLIENT_DYN_LIB_PATH is set
+if(DEFINED ENV{MYSQL_CLIENT_DYN_LIB_PATH})
+    message(STATUS "Using MySQL dynamic library path from environment variable: $ENV{MYSQL_CLIENT_DYN_LIB_PATH}")
+else()
+    # If MYSQL_CLIENT_DYN_LIB_PATH is not set, set a default value
+    set(MYSQL_CLIENT_DYN_LIB_PATH /opt/homebrew/opt/mysql-client/lib/libmysqlclient.dylib)
+    message(STATUS "Using default MySQL dynamic library path: $ENV{MYSQL_CLIENT_DYN_LIB_PATH}")
+endif()
+
+# Check if MYSQL_CPP_STATIC_LIB_PATH is set
+if(DEFINED ENV{MYSQL_CPP_STATIC_LIB_PATH})
+    message(STATUS "Using MySQL Connector CPP library path from environment variable: $ENV{MYSQL_CPP_STATIC_LIB_PATH}")
+else()
+    # If MYSQL_CPP_STATIC_LIB_PATH is not set, set a default value
+    set(MYSQL_CPP_STATIC_LIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/build_mysql_conn/jdbc/libmysqlcppconn-static.a)
+    message(STATUS "Using default MySQL dynamic library path: $ENV{MYSQL_CPP_STATIC_LIB_PATH}")
+endif()
+
 set(EXTENSION_DEPENDENCIES
-   ${MYSQL_CONNECTOR_CPP_LIB}/libmysqlcppconn-static.a
-   ${MYSQL_CONNECTOR_CPP_LIB}/libssl.dylib
-   ${MYSQL_CONNECTOR_CPP_LIB}/libcrypto.dylib
+   ${MYSQL_CLIENT_DYN_LIB_PATH}
+   ${MYSQL_CPP_STATIC_LIB_PATH}
    resolv
 )
 
@@ -67,12 +72,6 @@ set(PARAMETERS "-warnings")
 # Build the loadable extension target
 build_loadable_extension(${TARGET_NAME} ${PARAMETERS} ${EXTENSION_SOURCES})
 target_link_libraries(${TARGET_NAME}_loadable_extension ${EXTENSION_DEPENDENCIES})
-
-#export(
-#  TARGETS ${EXTENSION_NAME} spdlog
-#  NAMESPACE YourNamespace::
-#  FILE "${CMAKE_BINARY_DIR}/DuckDBExports.cmake"
-#)
 
 install(
   TARGETS ${EXTENSION_NAME}

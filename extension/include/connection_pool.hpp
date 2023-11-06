@@ -1,6 +1,8 @@
 #pragma once
 
-#include <mysql/jdbc.h>
+#include <jdbc/mysql_driver.h>
+#include <jdbc/mysql_connection.h>
+
 #include <thread>
 #include <mutex>
 #include <map>

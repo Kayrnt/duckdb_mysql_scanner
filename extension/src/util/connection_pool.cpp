@@ -2,6 +2,7 @@
 #include "connection_pool.hpp"
 #include <spdlog/spdlog.h>
 
+//TODO support maxPoolSize, currently unbound
 ConnectionPool::ConnectionPool(int minPoolSize, int maxPoolSize, const std::string& host, const std::string& username, const std::string& password):
 minPoolSize(minPoolSize), maxPoolSize(maxPoolSize), host(host), username(username), password(password)
 {
@@ -77,7 +78,7 @@ sql::Connection *ConnectionPool::getConnection()
   if (connection->isValid()) {
     // spdlog::debug("Connection is valid" <<);
   } else {
-    // spdlog::debug("Connection is invalid" <<);
+    spdlog::debug("Connection is invalid");
     // if the connection is invalid, create a new one
     delete connection;
     connection = createConnection(3);

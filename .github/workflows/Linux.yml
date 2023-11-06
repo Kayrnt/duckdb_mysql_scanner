@@ -31,7 +31,6 @@ jobs:
             vcpkg_triplet: 'arm64-linux'
     env:
       VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
-      GEN: Ninja
       VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
 
 
@@ -61,7 +60,11 @@ jobs:
           apt-get install -y -qq software-properties-common
           add-apt-repository ppa:git-core/ppa
           apt-get update -y -qq
-          apt-get install -y -qq ninja-build make gcc-multilib g++-multilib libssl-dev wget openjdk-8-jdk zip maven unixodbc-dev libc6-dev-i386 lib32readline6-dev libssl-dev libcurl4-gnutls-dev libexpat1-dev gettext unzip build-essential checkinstall libffi-dev curl libz-dev openssh-client
+          apt-get install -y -qq ninja-build make gcc-multilib g++-multilib libssl-dev\
+          wget openjdk-8-jdk zip maven unixodbc-dev libc6-dev-i386 lib32readline6-dev\
+          libssl-dev libcurl4-gnutls-dev libexpat1-dev gettext unzip build-essential\
+          checkinstall libffi-dev curl libz-dev openssh-client libboost-all-dev\
+          libmysqlclient-dev libssl-dev
           apt-get install -y -qq tar pkg-config
 
       - name: Checkout DuckDB to version
@@ -88,6 +91,12 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: 501db0f17ef6df184fcdbfbe0f87cde2313b6ab1
+
+      - name: Build mysql
+        run: |
+          cd mysql-connector-cpp
+          cmake . -DBUILD_STATIC=ON -DWITH_JDBC=ON -DWITH_MYSQL=/opt/homebrew/opt/mysql-client
+          cmake --build . --config Release
 
 #      - name: Install mysql (amd64_gcc4)
 #        if: ${{ matrix.arch == 'linux_amd64_gcc4' }}
