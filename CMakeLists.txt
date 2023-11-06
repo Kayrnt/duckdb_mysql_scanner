@@ -30,11 +30,8 @@ find_package(OpenSSL REQUIRED)
 include_directories(extension/include)
 add_subdirectory(extension/src)
 
-# Set the path to the MySQL Connector/C++ library
-set(MYSQL_CONNECTOR_CPP_PATH ${CMAKE_CURRENT_SOURCE_DIR}/mysql-connector-cpp)
-
 # Add the MySQL Connector/C++ headers
-include_directories(${MYSQL_CONNECTOR_CPP_PATH}/build/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/build_mysql_conn/include)
 
 # Add the spdlog library
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/spdlog/include)
@@ -42,13 +39,27 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/spdlog/include)
 # Create the extension library
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
 
-# Add the MySQL Connector/C++ library
-include_directories(${MYSQL_CONNECTOR_CPP_PATH}/build/include)
+# Check if MYSQL_CLIENT_DYN_LIB_PATH is set
+if(DEFINED ENV{MYSQL_CLIENT_DYN_LIB_PATH})
+    message(STATUS "Using MySQL dynamic library path from environment variable: $ENV{MYSQL_CLIENT_DYN_LIB_PATH}")
+else()
+    # If MYSQL_CLIENT_DYN_LIB_PATH is not set, set a default value
+    set(MYSQL_CLIENT_DYN_LIB_PATH /opt/homebrew/opt/mysql-client/lib/libmysqlclient.dylib)
+    message(STATUS "Using default MySQL dynamic library path: $ENV{MYSQL_CLIENT_DYN_LIB_PATH}")
+endif()
 
+# Check if MYSQL_CPP_STATIC_LIB_PATH is set
+if(DEFINED ENV{MYSQL_CPP_STATIC_LIB_PATH})
+    message(STATUS "Using MySQL Connector CPP library path from environment variable: $ENV{MYSQL_CPP_STATIC_LIB_PATH}")
+else()
+    # If MYSQL_CPP_STATIC_LIB_PATH is not set, set a default value
+    set(MYSQL_CPP_STATIC_LIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/build_mysql_conn/jdbc/libmysqlcppconn-static.a)
+    message(STATUS "Using default MySQL dynamic library path: $ENV{MYSQL_CPP_STATIC_LIB_PATH}")
+endif()
 
 set(EXTENSION_DEPENDENCIES
-   /opt/homebrew/opt/mysql-client/lib/libmysqlclient.dylib
-   ${MYSQL_CONNECTOR_CPP_PATH}/build/jdbc/libmysqlcppconn-static.a
+   ${MYSQL_CLIENT_DYN_LIB_PATH}
+   ${MYSQL_CPP_STATIC_LIB_PATH}
    resolv
 )
 

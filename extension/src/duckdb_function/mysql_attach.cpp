@@ -1,6 +1,6 @@
 #include "duckdb.hpp"
 
-#include "../../mysql/include/mysql/jdbc.h"
+#include "mysql_jdbc.h"
 #include "mysql_connection_manager.hpp"
 #include "../state/mysql_global_state.hpp"
 #include "paged_mysql_state.hpp"
